@@ -27,6 +27,11 @@
             height: 100vh;
         }
 
+        canvas.a-canvas {
+            width: 100% !important;
+            height: 100% !important;
+        }
+
         #marker-status {
             position: fixed;
             z-index: 1;
@@ -52,14 +57,27 @@
         embedded
         vr-mode-ui="enabled: false"
         device-orientation-permission-ui="enabled: false"
+        color-space="sRGB"
         renderer="colorManagement: true; logarithmicDepthBuffer: true"
     >
 
+        <a-assets>
+            <a-asset-item id="furniture-asset"></a-asset-item>
+        </a-assets>
+
         <a-entity id="furniture-target" mindar-image-target="targetIndex: 0">
-            <a-entity id="furniture-model" position="0 0 0" rotation="0 0 0"></a-entity>
+            <a-gltf-model
+                id="furniture-model"
+                src="#furniture-asset"
+                position="0 0 0.1"
+                rotation="0 0 0"
+                scale="0.2 0.2 0.2"
+            ></a-gltf-model>
         </a-entity>
 
         <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+        <a-entity light="type: ambient; color: #ffffff; intensity: 1.5"></a-entity>
+        <a-entity light="type: directional; color: #ffffff; intensity: 2" position="1 3 2"></a-entity>
 
     </a-scene>
 
@@ -86,11 +104,12 @@
         const furniture = furnitureOptions[productId] || furnitureOptions.chair;
         const scene = document.getElementById("marker-scene");
         const model = document.getElementById("furniture-model");
+        const asset = document.getElementById("furniture-asset");
         const status = document.getElementById("marker-status");
 
         document.title = `${furniture.name} - Marker AR`;
         scene.setAttribute("mindar-image", `imageTargetSrc: ${furniture.marker}; autoStart: true; uiScanning: yes; uiLoading: yes;`);
-        model.setAttribute("gltf-model", furniture.model);
+        asset.setAttribute("src", furniture.model);
 
         model.addEventListener("model-loaded", (event) => {
             const threeModel = event.detail.model;
