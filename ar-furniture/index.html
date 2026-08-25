@@ -1,13 +1,232 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ar-furniture</title>
-  </head>
-  <body>
-    <div id="app"></div>
-    <script type="module" src="/src/main.js"></script>
-  </body>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WebAR Furniture Preview and Room Planning System</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap"
+    rel="stylesheet"
+  />
+
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+
+  <!-- ===================== HEADER ===================== -->
+  <header class="site-header">
+    <div class="container header-inner">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">◆</span>
+        <div class="brand-text">
+          <p class="brand-title">WebAR Furniture Preview and Room Planning System</p>
+          <p class="brand-subtitle">Preview furniture in AR before placing it in your room.</p>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- ===================== HERO SECTION ===================== -->
+    <section class="hero">
+      <div class="container hero-inner">
+        <p class="eyebrow">University AR/VR Project</p>
+        <h1 class="hero-heading">See it in your space before it's in your space.</h1>
+        <p class="hero-description">
+          Explore furniture in 3D, preview products using marker-based AR, and place them
+          inside your real room using markerless AR.
+        </p>
+        <div class="hero-actions">
+          <button type="button" class="btn btn-primary" id="browseFurnitureBtn">
+            Browse Furniture
+          </button>
+          <button type="button" class="btn btn-secondary" id="startArBtn">
+            Start AR
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== FURNITURE CATALOGUE SECTION ===================== -->
+    <section class="catalogue" id="catalogue">
+      <div class="container">
+        <div class="section-heading">
+          <h2>Furniture Catalogue</h2>
+          <p>Sample products for previewing dimensions, pricing, and AR placement.</p>
+        </div>
+
+        <div class="card-grid">
+
+          <!-- Chair card -->
+          <article class="product-card" data-product="Chair">
+            <div class="product-image" aria-hidden="true">
+              <span class="placeholder-icon">🪑</span>
+            </div>
+            <div class="product-body">
+              <h3 class="product-name">Chair</h3>
+              <p class="product-desc">A comfortable everyday chair with a sturdy wooden frame.</p>
+              <dl class="product-meta">
+                <div>
+                  <dt>Price</dt>
+                  <dd>LKR 25,000</dd>
+                </div>
+                <div>
+                  <dt>Dimensions</dt>
+                  <dd>60cm × 65cm × 85cm</dd>
+                </div>
+              </dl>
+              <div class="product-actions">
+                <button type="button" class="btn btn-outline view-product-btn" data-product="Chair">
+                  View Product
+                </button>
+                <button type="button" class="btn btn-accent view-ar-btn" data-product="Chair">
+                  View in AR
+                </button>
+              </div>
+            </div>
+          </article>
+
+          <!-- Table card -->
+          <article class="product-card" data-product="Table">
+            <div class="product-image" aria-hidden="true">
+              <span class="placeholder-icon">🛋️</span>
+            </div>
+            <div class="product-body">
+              <h3 class="product-name">Table</h3>
+              <p class="product-desc">A spacious dining table that fits comfortably in most rooms.</p>
+              <dl class="product-meta">
+                <div>
+                  <dt>Price</dt>
+                  <dd>LKR 45,000</dd>
+                </div>
+                <div>
+                  <dt>Dimensions</dt>
+                  <dd>120cm × 70cm × 75cm</dd>
+                </div>
+              </dl>
+              <div class="product-actions">
+                <button type="button" class="btn btn-outline view-product-btn" data-product="Table">
+                  View Product
+                </button>
+                <button type="button" class="btn btn-accent view-ar-btn" data-product="Table">
+                  View in AR
+                </button>
+              </div>
+            </div>
+          </article>
+
+          <!-- Bed card -->
+          <article class="product-card" data-product="Bed">
+            <div class="product-image" aria-hidden="true">
+              <span class="placeholder-icon">🛏️</span>
+            </div>
+            <div class="product-body">
+              <h3 class="product-name">Bed</h3>
+              <p class="product-desc">A generously sized bed frame designed for a restful night's sleep.</p>
+              <dl class="product-meta">
+                <div>
+                  <dt>Price</dt>
+                  <dd>LKR 85,000</dd>
+                </div>
+                <div>
+                  <dt>Dimensions</dt>
+                  <dd>200cm × 160cm × 90cm</dd>
+                </div>
+              </dl>
+              <div class="product-actions">
+                <button type="button" class="btn btn-outline view-product-btn" data-product="Bed">
+                  View Product
+                </button>
+                <button type="button" class="btn btn-accent view-ar-btn" data-product="Bed">
+                  View in AR
+                </button>
+              </div>
+            </div>
+          </article>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== AR MODE SECTION ===================== -->
+    <section class="ar-modes" id="ar-modes">
+      <div class="container">
+        <div class="section-heading">
+          <h2>Choose an AR Mode</h2>
+          <p>Two ways to bring furniture into your space.</p>
+        </div>
+
+        <div class="ar-grid">
+
+          <!-- Marker-based AR card -->
+          <article class="ar-card">
+            <p class="ar-tag">Marker-Based AR</p>
+            <p class="ar-desc">
+              Scan a furniture marker to view the selected product in augmented reality.
+            </p>
+            <button type="button" class="btn btn-primary" id="markerArBtn">
+              Start Marker AR
+            </button>
+          </article>
+
+          <!-- Markerless AR card -->
+          <article class="ar-card">
+            <p class="ar-tag">Markerless AR</p>
+            <p class="ar-desc">
+              Place furniture inside your real room using surface detection.
+            </p>
+            <button type="button" class="btn btn-primary" id="markerlessArBtn">
+              View in My Room
+            </button>
+          </article>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== ABOUT / HOW IT WORKS SECTION ===================== -->
+    <section class="how-it-works" id="how-it-works">
+      <div class="container">
+        <div class="section-heading">
+          <h2>How It Works</h2>
+          <p>From browsing to arranging, in four simple steps.</p>
+        </div>
+
+        <ol class="steps-list">
+          <li class="step-item">
+            <span class="step-number">01</span>
+            <p class="step-text">Select furniture</p>
+          </li>
+          <li class="step-item">
+            <span class="step-number">02</span>
+            <p class="step-text">Preview with AR marker</p>
+          </li>
+          <li class="step-item">
+            <span class="step-number">03</span>
+            <p class="step-text">Place it inside your room</p>
+          </li>
+          <li class="step-item">
+            <span class="step-number">04</span>
+            <p class="step-text">Move, rotate, and arrange furniture</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ===================== FOOTER ===================== -->
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <p class="footer-title">WebAR Furniture Preview and Room Planning System</p>
+      <p class="footer-subtitle">University AR/VR Assignment Project</p>
+    </div>
+  </footer>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
 </html>
