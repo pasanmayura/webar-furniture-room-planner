@@ -16,6 +16,15 @@
         body {
             margin: 0;
             overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        a-scene {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
         }
 
         #marker-status {
@@ -59,23 +68,17 @@
             chair: {
                 name: "Modern Lounge Chair",
                 model: "/models/chair.glb",
-                marker: "/markers/chair-target.mind",
-                scale: "0.35 0.35 0.35",
-                position: "0 0 0"
+                marker: "/markers/chair-target.mind"
             },
             table: {
                 name: "Modern Dining Table",
                 model: "/models/table.glb",
-                marker: "/markers/table-target.mind",
-                scale: "0.35 0.35 0.35",
-                position: "0 0 0"
+                marker: "/markers/table-target.mind"
             },
             bed: {
                 name: "Modern Double Bed",
                 model: "/models/bed.glb",
-                marker: "/markers/bed-target.mind",
-                scale: "0.35 0.35 0.35",
-                position: "0 0 0"
+                marker: "/markers/bed-target.mind"
             }
         };
 
@@ -88,8 +91,24 @@
         document.title = `${furniture.name} - Marker AR`;
         scene.setAttribute("mindar-image", `imageTargetSrc: ${furniture.marker}; autoStart: true; uiScanning: yes; uiLoading: yes;`);
         model.setAttribute("gltf-model", furniture.model);
-        model.setAttribute("scale", furniture.scale);
-        model.setAttribute("position", furniture.position);
+
+        model.addEventListener("model-loaded", (event) => {
+            const threeModel = event.detail.model;
+            const three = AFRAME.THREE;
+            const bounds = new three.Box3().setFromObject(threeModel);
+            const size = bounds.getSize(new three.Vector3());
+            const center = bounds.getCenter(new three.Vector3());
+            const maxDimension = Math.max(size.x, size.y, size.z, 0.001);
+
+            threeModel.position.sub(center);
+            threeModel.scale.setScalar(0.7 / maxDimension);
+            model.setAttribute("position", "0 0 0");
+            status.textContent = `${furniture.name} ready. Point your camera at the marker.`;
+        });
+
+        model.addEventListener("model-error", () => {
+            status.textContent = `Unable to load the ${furniture.name.toLowerCase()} model.`;
+        });
 
         document.getElementById("furniture-target").addEventListener("targetFound", () => {
             status.textContent = `${furniture.name} detected.`;
