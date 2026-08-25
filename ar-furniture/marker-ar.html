@@ -61,17 +61,23 @@
         renderer="colorManagement: true; logarithmicDepthBuffer: true"
     >
 
-        <a-assets>
-            <a-asset-item id="furniture-asset"></a-asset-item>
-        </a-assets>
+        <!--
+          NOTE: we no longer use <a-assets>/<a-asset-item> here.
+          The model URL depends on the "product" query param, which we
+          only know once this script runs — and <a-gltf-model src="#id">
+          resolves against the asset item at component-init time, before
+          our JS ever gets a chance to set that asset's src. Setting the
+          model's src directly (below, in JS) avoids that timing bug
+          entirely and is the more reliable approach for a model chosen
+          at runtime.
+        -->
 
         <a-entity id="furniture-target" mindar-image-target="targetIndex: 0">
             <a-gltf-model
                 id="furniture-model"
-                src="#furniture-asset"
                 position="0 0 0.1"
                 rotation="0 0 0"
-                scale="0.2 0.2 0.2"
+                scale="1 1 1"
             ></a-gltf-model>
         </a-entity>
 
@@ -104,12 +110,17 @@
         const furniture = furnitureOptions[productId] || furnitureOptions.chair;
         const scene = document.getElementById("marker-scene");
         const model = document.getElementById("furniture-model");
-        const asset = document.getElementById("furniture-asset");
         const status = document.getElementById("marker-status");
 
         document.title = `${furniture.name} - Marker AR`;
         scene.setAttribute("mindar-image", `imageTargetSrc: ${furniture.marker}; autoStart: true; uiScanning: yes; uiLoading: yes;`);
-        asset.setAttribute("src", furniture.model);
+
+        // Set the model's src directly to the .glb URL instead of pointing
+        // it at an <a-asset-item>. This triggers a proper (re)load of the
+        // gltf-model component right now, with the correct binary fetch,
+        // instead of depending on an asset item that had no src when the
+        // scene first initialized.
+        model.setAttribute("gltf-model", furniture.model);
 
         model.addEventListener("model-loaded", (event) => {
             const threeModel = event.detail.model;
@@ -121,11 +132,20 @@
 
             threeModel.position.sub(center);
             threeModel.scale.setScalar(0.7 / maxDimension);
+
+            // Reset the entity's own position/scale to identity so the
+            // fit-to-size scale set on threeModel above is the ONLY scale
+            // applied — previously this entity also carried a hardcoded
+            // "0.2 0.2 0.2" scale, which multiplied with the auto-fit
+            // scale and could shrink the model to near-invisible.
             model.setAttribute("position", "0 0 0");
+            model.setAttribute("scale", "1 1 1");
+
             status.textContent = `${furniture.name} ready. Point your camera at the marker.`;
         });
 
-        model.addEventListener("model-error", () => {
+        model.addEventListener("model-error", (event) => {
+            console.error("GLTF load error:", event.detail);
             status.textContent = `Unable to load the ${furniture.name.toLowerCase()} model.`;
         });
 
