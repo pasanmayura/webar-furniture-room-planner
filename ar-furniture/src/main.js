@@ -1,3 +1,7 @@
+import { destroyChairPreview, loadChairPreview } from "./assets/chair-preview.js";
+import { destroyTablePreview, loadTablePreview } from "./assets/table-preview.js";
+import { destroyBedPreview, loadBedPreview } from "./assets/bed-preview.js";
+
 const products = [
   {
     id: "chair",
@@ -100,6 +104,9 @@ function showProductDetails(productId) {
   }
 
   console.log(`${selectedProduct.name} selected`);
+  destroyChairPreview();
+  destroyTablePreview();
+  destroyBedPreview();
   const colorsHtml = selectedProduct.colors
     .map(
       (color) => `
@@ -112,8 +119,8 @@ function showProductDetails(productId) {
     .join("");
 
   productDetailsView.innerHTML = `
-    <div class="details-image" aria-hidden="true">
-      <span class="placeholder-icon">${selectedProduct.icon}</span>
+    <div class="details-image" id="detailsImage" aria-label="3D preview of ${selectedProduct.name}">
+      ${selectedProduct.id === "chair" ? "<canvas id=\"chairPreviewCanvas\"></canvas>" : selectedProduct.id === "table" ? "<canvas id=\"tablePreviewCanvas\"></canvas>" : selectedProduct.id === "bed" ? "<canvas id=\"bedPreviewCanvas\"></canvas>" : `<span class="placeholder-icon" aria-hidden="true">${selectedProduct.icon}</span>`}
     </div>
 
     <div class="details-body">
@@ -170,10 +177,21 @@ function showProductDetails(productId) {
   catalogueView.classList.add("hidden");
   productDetailsView.classList.remove("hidden");
 
+  if (selectedProduct.id === "chair") {
+    loadChairPreview();
+  } else if (selectedProduct.id === "table") {
+    loadTablePreview();
+  } else if (selectedProduct.id === "bed") {
+    loadBedPreview();
+  }
+
   catalogueSection.scrollIntoView({ behavior: "smooth" });
 }
 
 function showCatalogue() {
+  destroyChairPreview();
+  destroyTablePreview();
+  destroyBedPreview();
   productDetailsView.classList.add("hidden");
   productDetailsView.innerHTML = "";
   catalogueView.classList.remove("hidden");

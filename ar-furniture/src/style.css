@@ -349,12 +349,22 @@ img {
 }
 
 .details-image {
+  position: relative;
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
   aspect-ratio: 4 / 3;
   background-color: var(--color-surface);
   border-radius: var(--radius-md);
+}
+
+#chairPreviewCanvas,
+#tablePreviewCanvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 280px;
 }
 
 .details-image .placeholder-icon {
