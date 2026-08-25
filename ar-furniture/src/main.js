@@ -163,7 +163,9 @@ function showProductDetails(productId) {
   `;
 
   document.getElementById("previewMarkerBtn").addEventListener("click", () => {
-    console.log("Marker-based AR selected for:", selectedProduct);
+    const markerPageUrl = new URL("/marker-ar.html", window.location.origin);
+    markerPageUrl.searchParams.set("product", selectedProduct.id);
+    window.location.href = markerPageUrl;
   });
 
   document.getElementById("viewInRoomBtn").addEventListener("click", () => {

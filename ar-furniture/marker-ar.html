@@ -1,36 +1,104 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0"
-  />
+    <meta charset="UTF-8">
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
 
-  <title>AR.js Hiro Test</title>
+    <title>Furniture Marker AR</title>
 
-  <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+    <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
-  <script src="https://raw.githack.com/AR-js-org/AR.js/3.4.8/aframe/build/aframe-ar.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+        }
+
+        #marker-status {
+            position: fixed;
+            z-index: 1;
+            top: 1rem;
+            left: 1rem;
+            right: 1rem;
+            margin: 0;
+            padding: 0.75rem 1rem;
+            color: #ffffff;
+            background: rgba(35, 38, 31, 0.78);
+            border-radius: 0.5rem;
+            font: 500 0.95rem/1.4 Arial, sans-serif;
+            text-align: center;
+        }
+    </style>
 </head>
 
-<body style="margin: 0; overflow: hidden;">
+<body>
+<p id="marker-status">Point your camera at the furniture marker.</p>
 
-  <a-scene embedded arjs>
+    <a-scene
+        id="marker-scene"
+        embedded
+        vr-mode-ui="enabled: false"
+        device-orientation-permission-ui="enabled: false"
+        renderer="colorManagement: true; logarithmicDepthBuffer: true"
+    >
 
-    <a-marker preset="hiro">
+        <a-entity id="furniture-target" mindar-image-target="targetIndex: 0">
+            <a-entity id="furniture-model" position="0 0 0" rotation="0 0 0"></a-entity>
+        </a-entity>
 
-      <a-box
-        position="0 0.5 0"
-        material="opacity: 0.8; side: double; color: blue;"
-      >
-      </a-box>
+        <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
-    </a-marker>
+    </a-scene>
 
-    <a-entity camera></a-entity>
+    <script>
+        const furnitureOptions = {
+            chair: {
+                name: "Modern Lounge Chair",
+                model: "/models/chair.glb",
+                marker: "/markers/chair-target.mind",
+                scale: "0.35 0.35 0.35",
+                position: "0 0 0"
+            },
+            table: {
+                name: "Modern Dining Table",
+                model: "/models/table.glb",
+                marker: "/markers/table-target.mind",
+                scale: "0.35 0.35 0.35",
+                position: "0 0 0"
+            },
+            bed: {
+                name: "Modern Double Bed",
+                model: "/models/bed.glb",
+                marker: "/markers/bed-target.mind",
+                scale: "0.35 0.35 0.35",
+                position: "0 0 0"
+            }
+        };
 
-  </a-scene>
+        const productId = new URLSearchParams(window.location.search).get("product");
+        const furniture = furnitureOptions[productId] || furnitureOptions.chair;
+        const scene = document.getElementById("marker-scene");
+        const model = document.getElementById("furniture-model");
+        const status = document.getElementById("marker-status");
+
+        document.title = `${furniture.name} - Marker AR`;
+        scene.setAttribute("mindar-image", `imageTargetSrc: ${furniture.marker}; autoStart: true; uiScanning: yes; uiLoading: yes;`);
+        model.setAttribute("gltf-model", furniture.model);
+        model.setAttribute("scale", furniture.scale);
+        model.setAttribute("position", furniture.position);
+
+        document.getElementById("furniture-target").addEventListener("targetFound", () => {
+            status.textContent = `${furniture.name} detected.`;
+        });
+
+        document.getElementById("furniture-target").addEventListener("targetLost", () => {
+            status.textContent = "Point your camera at the furniture marker.";
+        });
+    </script>
 
 </body>
 </html>
