@@ -222,6 +222,79 @@
         checkFileExists(furniture.model, "Model file");
         checkFileExists(furniture.marker, "Marker file");
 
+        // ---------- Inspect the .glb file's own JSON metadata ----------
+        // A model can download fine (200 OK) and even open correctly in a
+        // phone's native file previewer, yet still fail to render inside
+        // this page — usually because the previewer has a more capable
+        // glTF parser (e.g. it understands Draco/Meshopt geometry
+        // compression) than the loader running here does. Every .glb file
+        // declares which extensions it uses in its own header, so we read
+        // that directly instead of guessing.
+        async function inspectGlbFile(url) {
+            try {
+                const response = await fetch(url);
+                const buffer = await response.arrayBuffer();
+                const dataView = new DataView(buffer);
+
+                const magic = dataView.getUint32(0, true);
+                if (magic !== 0x46546c67) {
+                    debugWarn("File does not start with the glTF binary magic number (0x46546C67) — may not be a valid .glb.");
+                    return;
+                }
+
+                const version = dataView.getUint32(4, true);
+                const totalLength = dataView.getUint32(8, true);
+                debugLog(`GLB header — version: ${version}, declared length: ${totalLength}, actual bytes fetched: ${buffer.byteLength}`);
+
+                let offset = 12;
+                let jsonChunk = null;
+                while (offset < buffer.byteLength) {
+                    const chunkLength = dataView.getUint32(offset, true);
+                    const chunkType = dataView.getUint32(offset + 4, true);
+                    const chunkTypeStr = String.fromCharCode(
+                        chunkType & 0xff,
+                        (chunkType >> 8) & 0xff,
+                        (chunkType >> 16) & 0xff,
+                        (chunkType >> 24) & 0xff
+                    );
+                    if (chunkTypeStr === "JSON") {
+                        const jsonBytes = new Uint8Array(buffer, offset + 8, chunkLength);
+                        jsonChunk = JSON.parse(new TextDecoder("utf-8").decode(jsonBytes));
+                    }
+                    offset += 8 + chunkLength;
+                }
+
+                if (!jsonChunk) {
+                    debugError("Could not find a JSON chunk inside this .glb — the file may be malformed/truncated.");
+                    return;
+                }
+
+                debugLog(
+                    `GLTF contents — meshes: ${jsonChunk.meshes ? jsonChunk.meshes.length : 0}, ` +
+                    `accessors: ${jsonChunk.accessors ? jsonChunk.accessors.length : 0}, ` +
+                    `nodes: ${jsonChunk.nodes ? jsonChunk.nodes.length : 0}`
+                );
+
+                if (jsonChunk.extensionsUsed && jsonChunk.extensionsUsed.length) {
+                    debugWarn("extensionsUsed: " + jsonChunk.extensionsUsed.join(", "));
+                } else {
+                    debugLog("No extensionsUsed listed — file does not use any glTF extensions.");
+                }
+
+                if (jsonChunk.extensionsRequired && jsonChunk.extensionsRequired.length) {
+                    debugError(
+                        "extensionsRequired: " + jsonChunk.extensionsRequired.join(", ") +
+                        " — if the AR page's loader doesn't support these, geometry will fail to decode " +
+                        "(often WITHOUT throwing a visible error, which matches what we're seeing)."
+                    );
+                }
+            } catch (err) {
+                debugError("Failed to inspect .glb file contents:", err.message);
+            }
+        }
+
+        inspectGlbFile(furniture.model);
+
         // ---------- Scene / MindAR lifecycle logging ----------
         scene.addEventListener("loaded", () => {
             debugLog("a-scene 'loaded' event fired (DOM + assets ready).");
