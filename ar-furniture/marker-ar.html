@@ -99,6 +99,7 @@
         };
 
         const productId = new URLSearchParams(window.location.search).get("product");
+        const selectedColor = new URLSearchParams(window.location.search).get("color");
         const furniture = furnitureOptions[productId] || furnitureOptions.chair;
 
         const scene = document.getElementById("marker-scene");
@@ -179,6 +180,25 @@
 
         model.setAttribute("gltf-model", furniture.model);
 
+        function applySelectedColor(threeModel) {
+            if (!selectedColor || !/^#[0-9a-f]{6}$/i.test(selectedColor)) {
+                return;
+            }
+
+            threeModel.traverse((node) => {
+                if (!node.isMesh || !node.material) {
+                    return;
+                }
+
+                const materials = Array.isArray(node.material) ? node.material : [node.material];
+                materials.forEach((material) => {
+                    if (material.color) {
+                        material.color.set(selectedColor);
+                    }
+                });
+            });
+        }
+
         const MODEL_FIT_SIZE = 0.3;
 
         model.addEventListener("model-loaded", (event) => {
@@ -190,6 +210,7 @@
 
             const three = AFRAME.THREE;
             threeModel.updateMatrixWorld(true);
+            applySelectedColor(threeModel);
 
             const bounds = new three.Box3().setFromObject(threeModel);
             const size = bounds.getSize(new three.Vector3());

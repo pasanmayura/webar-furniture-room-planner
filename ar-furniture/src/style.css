@@ -434,6 +434,12 @@ img {
   border: 1px solid var(--color-border);
   border-radius: 999px;
   padding: 0.35rem 0.75rem 0.35rem 0.35rem;
+  cursor: pointer;
+}
+
+.color-swatch.selected {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--color-accent-soft);
 }
 
 .color-dot {

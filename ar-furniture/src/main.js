@@ -110,8 +110,8 @@ function showProductDetails(productId) {
   const colorsHtml = selectedProduct.colors
     .map(
       (color) => `
-      <li class="color-swatch">
-        <span class="color-dot" style="background-color: ${color.hex};"></span>
+      <li class="color-swatch${color === selectedProduct.colors[0] ? " selected" : ""}" data-color="${color.hex}" tabindex="0" role="button" aria-label="Select ${color.name} color" aria-pressed="${color === selectedProduct.colors[0]}">
+        <span class="color-dot" style="background-color: ${color.hex};" aria-hidden="true"></span>
         ${color.name}
       </li>
     `
@@ -162,9 +162,31 @@ function showProductDetails(productId) {
     </div>
   `;
 
+  let selectedColor = selectedProduct.colors[0].hex;
+  const colorSwatches = productDetailsView.querySelectorAll(".color-swatch");
+  colorSwatches.forEach((swatch) => {
+    const selectColor = () => {
+      selectedColor = swatch.dataset.color;
+      colorSwatches.forEach((item) => {
+        const isSelected = item === swatch;
+        item.classList.toggle("selected", isSelected);
+        item.setAttribute("aria-pressed", String(isSelected));
+      });
+    };
+
+    swatch.addEventListener("click", selectColor);
+    swatch.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        selectColor();
+      }
+    });
+  });
+
   document.getElementById("previewMarkerBtn").addEventListener("click", () => {
     const markerPageUrl = new URL("/marker-ar.html", window.location.origin);
     markerPageUrl.searchParams.set("product", selectedProduct.id);
+    markerPageUrl.searchParams.set("color", selectedColor);
     window.location.href = markerPageUrl;
   });
 
