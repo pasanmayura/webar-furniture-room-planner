@@ -324,6 +324,16 @@
         model.setAttribute("gltf-model", furniture.model);
         debugLog("gltf-model attribute set on model entity — waiting for model-loaded / model-error...");
 
+        // How large the model should appear, relative to the marker's own
+        // physical width (MindAR treats the marker's printed width as "1"
+        // unit in its coordinate space — this is NOT relative to screen
+        // size). 0.7 means "70% as wide as the marker image itself," which
+        // can easily overflow the camera view if you're holding the phone
+        // close to the marker. Tune this down/up to taste — try values
+        // between roughly 0.2 and 0.5 depending on your marker's printed
+        // size and how close you expect people to hold the camera.
+        const MODEL_FIT_SIZE = 0.3;
+
         model.addEventListener("model-loaded", (event) => {
             debugLog("model-loaded fired.");
 
@@ -394,9 +404,9 @@
             if (boundsAreValid) {
                 const maxDimension = Math.max(size.x, size.y, size.z, 0.001);
                 threeModel.position.sub(center);
-                threeModel.scale.setScalar(0.7 / maxDimension);
+                threeModel.scale.setScalar(MODEL_FIT_SIZE / maxDimension);
                 model.setAttribute("position", "0 0 0");
-                debugLog(`Auto-fit scale applied: ${(0.7 / maxDimension).toFixed(5)}`);
+                debugLog(`Auto-fit scale applied: ${(MODEL_FIT_SIZE / maxDimension).toFixed(5)} (target fit size: ${MODEL_FIT_SIZE})`);
             } else {
                 // Don't apply a NaN/Infinite scale — that silently makes the
                 // whole model invisible even though "visible" is true.
