@@ -69,7 +69,7 @@
 <body>
 
   <div id="info">
-    Loading chair model...
+    Loading furniture model...
   </div>
 
   <button id="start-ar" disabled>
@@ -99,7 +99,25 @@
     let hitTestSource = null;
     let hitTestSourceRequested = false;
 
-    let chairTemplate = null;
+    let furnitureTemplate = null;
+
+    const furnitureOptions = {
+      chair: {
+        name: 'chair',
+        model: '/models/chair.glb'
+      },
+      table: {
+        name: 'table',
+        model: '/models/table.glb'
+      },
+      bed: {
+        name: 'bed',
+        model: '/models/bed.glb'
+      }
+    };
+
+    const productId = new URLSearchParams(window.location.search).get('product');
+    const furniture = furnitureOptions[productId] || furnitureOptions.chair;
 
     const info =
       document.getElementById('info');
@@ -125,7 +143,7 @@
 
       createController();
 
-      loadChairModel();
+      loadFurnitureModel();
 
       setupEvents();
 
@@ -298,10 +316,10 @@
 
 
     // ==================================================
-    // LOAD CHAIR
+    // LOAD FURNITURE
     // ==================================================
 
-    function loadChairModel() {
+    function loadFurnitureModel() {
 
       const loader =
         new GLTFLoader();
@@ -309,7 +327,7 @@
 
       loader.load(
 
-        '/models/chair.glb',
+        furniture.model,
 
 
         // -----------------------------
@@ -318,7 +336,7 @@
 
         function (gltf) {
 
-          chairTemplate =
+          furnitureTemplate =
             gltf.scene;
 
 
@@ -335,7 +353,7 @@
             0.01
           */
 
-          chairTemplate.scale.set(
+          furnitureTemplate.scale.set(
             0.5,
             0.5,
             0.5
@@ -356,12 +374,12 @@
 
 
           console.log(
-            'Chair loaded successfully'
+            `${furniture.name} loaded successfully`
           );
 
 
           info.textContent =
-            'Chair ready - press Start AR';
+            `${furniture.name} ready - press Start AR`;
 
 
           startButton.disabled =
@@ -387,7 +405,7 @@
 
 
             info.textContent =
-              `Loading chair: ${percent}%`;
+              `Loading ${furniture.name}: ${percent}%`;
 
           }
 
@@ -401,13 +419,13 @@
         function (error) {
 
           console.error(
-            'Chair loading error:',
+            `${furniture.name} loading error:`,
             error
           );
 
 
           info.textContent =
-            'Failed to load chair model';
+            `Failed to load ${furniture.name} model`;
 
         }
 
@@ -551,7 +569,7 @@
 
 
     // ==================================================
-    // PLACE CHAIR
+    // PLACE FURNITURE
     // ==================================================
 
     function onSelect() {
@@ -565,18 +583,18 @@
       }
 
 
-      if (!chairTemplate) {
+      if (!furnitureTemplate) {
 
         info.textContent =
-          'Chair is still loading';
+          `${furniture.name} is still loading`;
 
         return;
       }
 
 
       // Clone the loaded model
-      const chair =
-        chairTemplate.clone(true);
+      const placedFurniture =
+        furnitureTemplate.clone(true);
 
 
       // -----------------------------
@@ -592,7 +610,7 @@
       );
 
 
-      chair.position.copy(
+      placedFurniture.position.copy(
         position
       );
 
@@ -607,7 +625,7 @@
         0.1
       */
 
-      chair.position.y +=
+      placedFurniture.position.y +=
         0.01;
 
 
@@ -621,7 +639,7 @@
         1 or 2
       */
 
-      chair.scale.set(
+      placedFurniture.scale.set(
         0.5,
         0.5,
         0.5
@@ -629,18 +647,18 @@
 
 
       scene.add(
-        chair
+        placedFurniture
       );
 
 
       console.log(
-        'Chair placed:',
-        chair.position
+        `${furniture.name} placed:`,
+        placedFurniture.position
       );
 
 
       info.textContent =
-        'Chair placed successfully';
+        `${furniture.name} placed successfully`;
 
     }
 
@@ -744,7 +762,7 @@
 
 
               info.textContent =
-                'Surface found - tap to place chair';
+                `Surface found - tap to place ${furniture.name}`;
 
             }
 

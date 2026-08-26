@@ -169,7 +169,9 @@ function showProductDetails(productId) {
   });
 
   document.getElementById("viewInRoomBtn").addEventListener("click", () => {
-    console.log("Markerless AR selected for:", selectedProduct);
+    const markerlessPageUrl = new URL("/markerless-ar.html", window.location.origin);
+    markerlessPageUrl.searchParams.set("product", selectedProduct.id);
+    window.location.href = markerlessPageUrl;
   });
 
   document.getElementById("backToFurnitureBtn").addEventListener("click", () => {
