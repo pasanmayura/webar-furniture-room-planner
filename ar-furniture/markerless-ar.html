@@ -98,6 +98,7 @@
     let footprintHitTestSourcePromise = null;
     let footprintCenter = null;
     let footprintResults = [false, false, false, false, false];
+    let planeDetectionAvailable = false;
 
     let furnitureTemplate = null;
     let canPlaceFurniture = false;
@@ -351,7 +352,74 @@
       });
     }
 
-    function checkAvailableFloorSpace(frame) {
+    function isPointInsidePlane(frame, plane, worldPoint) {
+      const pose = frame.getPose(plane.planeSpace, localReferenceSpace);
+      if (!pose || !plane.polygon || plane.polygon.length < 3) {
+        return false;
+      }
+
+      const planeMatrix = new THREE.Matrix4().fromArray(pose.transform.matrix).invert();
+      const planePoint = worldPoint.clone().applyMatrix4(planeMatrix);
+      let inside = false;
+
+      for (let index = 0, previous = plane.polygon.length - 1; index < plane.polygon.length; previous = index++) {
+        const currentPoint = plane.polygon[index];
+        const previousPoint = plane.polygon[previous];
+        const intersects =
+          (currentPoint.z > planePoint.z) !== (previousPoint.z > planePoint.z) &&
+          planePoint.x <
+            ((previousPoint.x - currentPoint.x) * (planePoint.z - currentPoint.z)) /
+              (previousPoint.z - currentPoint.z) +
+              currentPoint.x;
+
+        if (intersects) {
+          inside = !inside;
+        }
+      }
+
+      return inside;
+    }
+
+    function checkDetectedPlaneSpace(frame, center) {
+      if (!frame.detectedPlanes || !localReferenceSpace) {
+        return null;
+      }
+
+      planeDetectionAvailable = true;
+      const { width, depth } = getFurnitureSize();
+      const halfWidth = width / 2;
+      const halfDepth = depth / 2;
+      const footprintPoints = [
+        new THREE.Vector3(center.x - halfWidth, center.y, center.z - halfDepth),
+        new THREE.Vector3(center.x + halfWidth, center.y, center.z - halfDepth),
+        new THREE.Vector3(center.x - halfWidth, center.y, center.z + halfDepth),
+        new THREE.Vector3(center.x + halfWidth, center.y, center.z + halfDepth)
+      ];
+
+      for (const plane of frame.detectedPlanes) {
+        if (plane.orientation !== 'horizontal') {
+          continue;
+        }
+
+        const planePose = frame.getPose(plane.planeSpace, localReferenceSpace);
+        if (!planePose || Math.abs(planePose.transform.position.y - center.y) > 0.12) {
+          continue;
+        }
+
+        if (footprintPoints.every((point) => isPointInsidePlane(frame, plane, point))) {
+          return true;
+        }
+      }
+
+      return false;
+    }
+
+    function checkAvailableFloorSpace(frame, center) {
+      const detectedPlaneResult = checkDetectedPlaneSpace(frame, center);
+      if (detectedPlaneResult !== null) {
+        return detectedPlaneResult;
+      }
+
       if (footprintHitTestSources.length !== 5) {
         return false;
       }
@@ -363,9 +431,7 @@
       const centerIsValid = footprintResults[4];
       const validCorners = footprintResults.slice(0, 4).filter(Boolean).length;
 
-      // Require the center and most of the surrounding footprint. A single
-      // missed corner should not block placement on an otherwise usable floor.
-      return centerIsValid && validCorners >= 2;
+      return centerIsValid && validCorners === 4;
     }
 
     function createFurnitureBoundingBox(position, size) {
@@ -386,11 +452,7 @@
       });
     }
 
-    function validatePlacement(position) {
-      const hasEnoughFloor =
-        footprintHitTestSources.length === 5 &&
-        footprintResults[4] &&
-        footprintResults.slice(0, 4).filter(Boolean).length >= 2;
+    function validatePlacement(position, hasEnoughFloor) {
       const overlapsExistingFurniture = checkVirtualFurnitureCollision(position);
 
       canPlaceFurniture = hasEnoughFloor && !overlapsExistingFurniture;
@@ -532,7 +594,8 @@
                 'hit-test'
               ],
               optionalFeatures: [
-                'dom-overlay'
+                'dom-overlay',
+                'plane-detection'
               ],
               domOverlay: {
                 root: document.body
@@ -576,6 +639,7 @@
             footprintHitTestSourcePromise = null;
             footprintCenter = null;
             localReferenceSpace = null;
+            planeDetectionAvailable = false;
             canPlaceFurniture = false;
             reticle.visible = false;
             placementGuide.visible = false;
@@ -771,8 +835,8 @@
                 createFootprintHitTestSources(placementPosition);
               }
               updatePlacementGuideTransform();
-              checkAvailableFloorSpace(frame);
-              validatePlacement(placementPosition);
+              const hasEnoughFloor = checkAvailableFloorSpace(frame, placementPosition);
+              validatePlacement(placementPosition, hasEnoughFloor);
             }
           }
           else {
