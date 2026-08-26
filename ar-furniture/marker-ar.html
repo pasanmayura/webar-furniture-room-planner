@@ -7,7 +7,7 @@
         content="width=device-width, initial-scale=1.0"
     >
 
-    <title>Furniture Marker AR</title>
+    <title>Furniture Marker AR (Debug)</title>
 
     <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
@@ -34,7 +34,7 @@
 
         #marker-status {
             position: fixed;
-            z-index: 1;
+            z-index: 2;
             top: 1rem;
             left: 1rem;
             right: 1rem;
@@ -45,6 +45,35 @@
             border-radius: 0.5rem;
             font: 500 0.95rem/1.4 Arial, sans-serif;
             text-align: center;
+        }
+
+        /* ---------- On-screen debug log ----------
+           Mirrors console.log/error so you can see what's happening
+           on a phone without plugging in for remote devtools.
+           Remove this whole block once the real bug is fixed. */
+        #debug-log {
+            position: fixed;
+            z-index: 2;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            max-height: 40vh;
+            overflow-y: auto;
+            margin: 0;
+            padding: 0.5rem 0.75rem;
+            background: rgba(0, 0, 0, 0.85);
+            color: #7CFC7C;
+            font: 400 0.75rem/1.4 monospace;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        #debug-log .err {
+            color: #FF8080;
+        }
+
+        #debug-log .warn {
+            color: #FFD27C;
         }
     </style>
 </head>
@@ -61,23 +90,33 @@
         renderer="colorManagement: true; logarithmicDepthBuffer: true"
     >
 
-        <!--
-          NOTE: we no longer use <a-assets>/<a-asset-item> here.
-          The model URL depends on the "product" query param, which we
-          only know once this script runs — and <a-gltf-model src="#id">
-          resolves against the asset item at component-init time, before
-          our JS ever gets a chance to set that asset's src. Setting the
-          model's src directly (below, in JS) avoids that timing bug
-          entirely and is the more reliable approach for a model chosen
-          at runtime.
-        -->
-
         <a-entity id="furniture-target" mindar-image-target="targetIndex: 0">
+
+            <!--
+              DEBUG CUBE — always visible the moment the target is
+              detected, regardless of whether the .glb model loads.
+              If this cube shows up on marker detection but the real
+              furniture model still doesn't, the problem is 100%
+              isolated to model loading (bad URL, bad file, CORS,
+              wrong response type, etc). If even THIS cube never shows
+              up, the problem is in marker tracking / rendering, not
+              the model at all.
+              Remove this entity once debugging is done.
+            -->
+            <a-box
+                id="debug-cube"
+                position="0 0 0.1"
+                scale="0.3 0.3 0.3"
+                color="#4F6F52"
+                material="opacity: 0.85"
+            ></a-box>
+
             <a-gltf-model
                 id="furniture-model"
                 position="0 0 0.1"
                 rotation="0 0 0"
                 scale="1 1 1"
+                visible="false"
             ></a-gltf-model>
         </a-entity>
 
@@ -87,7 +126,48 @@
 
     </a-scene>
 
+    <pre id="debug-log"></pre>
+
     <script>
+        // ---------- Debug logging helpers ----------
+        // Prints to both the browser console AND an on-screen panel,
+        // since mobile AR testing usually means no visible devtools.
+        const debugLogEl = document.getElementById("debug-log");
+
+        function logToScreen(message, level) {
+            const line = document.createElement("div");
+            if (level) line.className = level;
+            const time = new Date().toISOString().split("T")[1].replace("Z", "");
+            line.textContent = `[${time}] ${message}`;
+            debugLogEl.appendChild(line);
+            debugLogEl.scrollTop = debugLogEl.scrollHeight;
+        }
+
+        function debugLog(...args) {
+            console.log(...args);
+            logToScreen(args.map(String).join(" "));
+        }
+
+        function debugWarn(...args) {
+            console.warn(...args);
+            logToScreen(args.map(String).join(" "), "warn");
+        }
+
+        function debugError(...args) {
+            console.error(...args);
+            logToScreen(args.map(String).join(" "), "err");
+        }
+
+        // Catch anything that would otherwise only show up in a console
+        // we don't have access to on a phone.
+        window.addEventListener("error", (event) => {
+            debugError("window.onerror:", event.message, "at", event.filename + ":" + event.lineno);
+        });
+        window.addEventListener("unhandledrejection", (event) => {
+            debugError("Unhandled promise rejection:", event.reason);
+        });
+
+        // ---------- Config ----------
         const furnitureOptions = {
             chair: {
                 name: "Modern Lounge Chair",
@@ -108,52 +188,117 @@
 
         const productId = new URLSearchParams(window.location.search).get("product");
         const furniture = furnitureOptions[productId] || furnitureOptions.chair;
+        debugLog("Selected product:", productId || "(none in URL, defaulted to chair)");
+        debugLog("Model URL:", furniture.model);
+        debugLog("Marker URL:", furniture.marker);
+
         const scene = document.getElementById("marker-scene");
         const model = document.getElementById("furniture-model");
+        const debugCube = document.getElementById("debug-cube");
         const status = document.getElementById("marker-status");
 
         document.title = `${furniture.name} - Marker AR`;
-        scene.setAttribute("mindar-image", `imageTargetSrc: ${furniture.marker}; autoStart: true; uiScanning: yes; uiLoading: yes;`);
 
-        // Set the model's src directly to the .glb URL instead of pointing
-        // it at an <a-asset-item>. This triggers a proper (re)load of the
-        // gltf-model component right now, with the correct binary fetch,
-        // instead of depending on an asset item that had no src when the
-        // scene first initialized.
+        // ---------- Sanity-check both files actually exist BEFORE
+        // handing them to A-Frame/MindAR, so a 404 or wrong MIME type
+        // shows up clearly instead of failing silently inside the
+        // gltf/mindar loaders. ----------
+        function checkFileExists(url, label) {
+            fetch(url, { method: "HEAD" })
+                .then((response) => {
+                    if (response.ok) {
+                        debugLog(
+                            `${label} OK (${response.status}) — content-type: ${response.headers.get("content-type")}, content-length: ${response.headers.get("content-length")}`
+                        );
+                    } else {
+                        debugError(`${label} returned HTTP ${response.status} for ${url}`);
+                    }
+                })
+                .catch((err) => {
+                    debugError(`${label} fetch failed for ${url}:`, err.message);
+                });
+        }
+
+        checkFileExists(furniture.model, "Model file");
+        checkFileExists(furniture.marker, "Marker file");
+
+        // ---------- Scene / MindAR lifecycle logging ----------
+        scene.addEventListener("loaded", () => {
+            debugLog("a-scene 'loaded' event fired (DOM + assets ready).");
+        });
+
+        scene.addEventListener("renderstart", () => {
+            debugLog("a-scene 'renderstart' event fired (render loop running).");
+        });
+
+        scene.addEventListener("arReady", () => {
+            debugLog("MindAR 'arReady' event fired (camera + tracker initialized).");
+        });
+
+        scene.addEventListener("arError", (event) => {
+            debugError("MindAR 'arError' event fired:", JSON.stringify(event.detail));
+        });
+
+        scene.setAttribute(
+            "mindar-image",
+            `imageTargetSrc: ${furniture.marker}; autoStart: true; uiScanning: yes; uiLoading: yes;`
+        );
+        debugLog("mindar-image attribute set on scene.");
+
+        // Set the model's src directly to the .glb URL instead of an
+        // <a-asset-item>, so it (re)loads immediately with a correct
+        // binary fetch.
         model.setAttribute("gltf-model", furniture.model);
+        debugLog("gltf-model attribute set on model entity — waiting for model-loaded / model-error...");
 
         model.addEventListener("model-loaded", (event) => {
+            debugLog("model-loaded fired.");
+
             const threeModel = event.detail.model;
+            if (!threeModel) {
+                debugError("model-loaded fired but event.detail.model is empty/undefined.");
+                return;
+            }
+
             const three = AFRAME.THREE;
             const bounds = new three.Box3().setFromObject(threeModel);
             const size = bounds.getSize(new three.Vector3());
             const center = bounds.getCenter(new three.Vector3());
             const maxDimension = Math.max(size.x, size.y, size.z, 0.001);
 
+            debugLog(
+                `Model bounds — size: (${size.x.toFixed(3)}, ${size.y.toFixed(3)}, ${size.z.toFixed(3)}), maxDimension: ${maxDimension.toFixed(3)}`
+            );
+
+            if (size.x === 0 && size.y === 0 && size.z === 0) {
+                debugWarn("Model bounding box is zero on all axes — the file likely loaded but contains no visible geometry (check the .glb itself).");
+            }
+
             threeModel.position.sub(center);
             threeModel.scale.setScalar(0.7 / maxDimension);
 
-            // Reset the entity's own position/scale to identity so the
-            // fit-to-size scale set on threeModel above is the ONLY scale
-            // applied — previously this entity also carried a hardcoded
-            // "0.2 0.2 0.2" scale, which multiplied with the auto-fit
-            // scale and could shrink the model to near-invisible.
             model.setAttribute("position", "0 0 0");
             model.setAttribute("scale", "1 1 1");
+            model.setAttribute("visible", "true");
+            debugCube.setAttribute("visible", "false"); // hide the debug cube once the real model is confirmed working
 
             status.textContent = `${furniture.name} ready. Point your camera at the marker.`;
+            debugLog("Model made visible, debug cube hidden.");
         });
 
         model.addEventListener("model-error", (event) => {
-            console.error("GLTF load error:", event.detail);
+            debugError("model-error fired:", JSON.stringify(event.detail));
             status.textContent = `Unable to load the ${furniture.name.toLowerCase()} model.`;
         });
 
+        // ---------- Marker tracking events ----------
         document.getElementById("furniture-target").addEventListener("targetFound", () => {
+            debugLog("targetFound — marker detected.");
             status.textContent = `${furniture.name} detected.`;
         });
 
         document.getElementById("furniture-target").addEventListener("targetLost", () => {
+            debugLog("targetLost — marker no longer visible.");
             status.textContent = "Point your camera at the furniture marker.";
         });
     </script>
