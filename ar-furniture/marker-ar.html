@@ -7,7 +7,7 @@
         content="width=device-width, initial-scale=1.0"
     >
 
-    <title>Furniture Marker AR (Debug)</title>
+    <title>Furniture Marker AR</title>
 
     <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
@@ -34,7 +34,7 @@
 
         #marker-status {
             position: fixed;
-            z-index: 2;
+            z-index: 1;
             top: 1rem;
             left: 1rem;
             right: 1rem;
@@ -45,35 +45,6 @@
             border-radius: 0.5rem;
             font: 500 0.95rem/1.4 Arial, sans-serif;
             text-align: center;
-        }
-
-        /* ---------- On-screen debug log ----------
-           Mirrors console.log/error so you can see what's happening
-           on a phone without plugging in for remote devtools.
-           Remove this whole block once the real bug is fixed. */
-        #debug-log {
-            position: fixed;
-            z-index: 2;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            max-height: 40vh;
-            overflow-y: auto;
-            margin: 0;
-            padding: 0.5rem 0.75rem;
-            background: rgba(0, 0, 0, 0.85);
-            color: #7CFC7C;
-            font: 400 0.75rem/1.4 monospace;
-            white-space: pre-wrap;
-            word-break: break-word;
-        }
-
-        #debug-log .err {
-            color: #FF8080;
-        }
-
-        #debug-log .warn {
-            color: #FFD27C;
         }
     </style>
 </head>
@@ -90,33 +61,17 @@
         renderer="colorManagement: true; logarithmicDepthBuffer: true"
     >
 
+        <a-assets>
+            <a-asset-item id="furniture-asset"></a-asset-item>
+        </a-assets>
+
         <a-entity id="furniture-target" mindar-image-target="targetIndex: 0">
-
-            <!--
-              DEBUG CUBE — always visible the moment the target is
-              detected, regardless of whether the .glb model loads.
-              If this cube shows up on marker detection but the real
-              furniture model still doesn't, the problem is 100%
-              isolated to model loading (bad URL, bad file, CORS,
-              wrong response type, etc). If even THIS cube never shows
-              up, the problem is in marker tracking / rendering, not
-              the model at all.
-              Remove this entity once debugging is done.
-            -->
-            <a-box
-                id="debug-cube"
-                position="0 0 0.1"
-                scale="0.3 0.3 0.3"
-                color="#4F6F52"
-                material="opacity: 0.85"
-            ></a-box>
-
             <a-gltf-model
                 id="furniture-model"
+                src="#furniture-asset"
                 position="0 0 0.1"
                 rotation="0 0 0"
-                scale="1 1 1"
-                visible="false"
+                scale="0.2 0.2 0.2"
             ></a-gltf-model>
         </a-entity>
 
@@ -126,48 +81,7 @@
 
     </a-scene>
 
-    <pre id="debug-log"></pre>
-
     <script>
-        // ---------- Debug logging helpers ----------
-        // Prints to both the browser console AND an on-screen panel,
-        // since mobile AR testing usually means no visible devtools.
-        const debugLogEl = document.getElementById("debug-log");
-
-        function logToScreen(message, level) {
-            const line = document.createElement("div");
-            if (level) line.className = level;
-            const time = new Date().toISOString().split("T")[1].replace("Z", "");
-            line.textContent = `[${time}] ${message}`;
-            debugLogEl.appendChild(line);
-            debugLogEl.scrollTop = debugLogEl.scrollHeight;
-        }
-
-        function debugLog(...args) {
-            console.log(...args);
-            logToScreen(args.map(String).join(" "));
-        }
-
-        function debugWarn(...args) {
-            console.warn(...args);
-            logToScreen(args.map(String).join(" "), "warn");
-        }
-
-        function debugError(...args) {
-            console.error(...args);
-            logToScreen(args.map(String).join(" "), "err");
-        }
-
-        // Catch anything that would otherwise only show up in a console
-        // we don't have access to on a phone.
-        window.addEventListener("error", (event) => {
-            debugError("window.onerror:", event.message, "at", event.filename + ":" + event.lineno);
-        });
-        window.addEventListener("unhandledrejection", (event) => {
-            debugError("Unhandled promise rejection:", event.reason);
-        });
-
-        // ---------- Config ----------
         const furnitureOptions = {
             chair: {
                 name: "Modern Lounge Chair",
@@ -188,269 +102,38 @@
 
         const productId = new URLSearchParams(window.location.search).get("product");
         const furniture = furnitureOptions[productId] || furnitureOptions.chair;
-        debugLog("Selected product:", productId || "(none in URL, defaulted to chair)");
-        debugLog("Model URL:", furniture.model);
-        debugLog("Marker URL:", furniture.marker);
-
         const scene = document.getElementById("marker-scene");
         const model = document.getElementById("furniture-model");
-        const debugCube = document.getElementById("debug-cube");
+        const asset = document.getElementById("furniture-asset");
         const status = document.getElementById("marker-status");
 
         document.title = `${furniture.name} - Marker AR`;
-
-        // ---------- Sanity-check both files actually exist BEFORE
-        // handing them to A-Frame/MindAR, so a 404 or wrong MIME type
-        // shows up clearly instead of failing silently inside the
-        // gltf/mindar loaders. ----------
-        function checkFileExists(url, label) {
-            fetch(url, { method: "HEAD" })
-                .then((response) => {
-                    if (response.ok) {
-                        debugLog(
-                            `${label} OK (${response.status}) — content-type: ${response.headers.get("content-type")}, content-length: ${response.headers.get("content-length")}`
-                        );
-                    } else {
-                        debugError(`${label} returned HTTP ${response.status} for ${url}`);
-                    }
-                })
-                .catch((err) => {
-                    debugError(`${label} fetch failed for ${url}:`, err.message);
-                });
-        }
-
-        checkFileExists(furniture.model, "Model file");
-        checkFileExists(furniture.marker, "Marker file");
-
-        // ---------- Inspect the .glb file's own JSON metadata ----------
-        // A model can download fine (200 OK) and even open correctly in a
-        // phone's native file previewer, yet still fail to render inside
-        // this page — usually because the previewer has a more capable
-        // glTF parser (e.g. it understands Draco/Meshopt geometry
-        // compression) than the loader running here does. Every .glb file
-        // declares which extensions it uses in its own header, so we read
-        // that directly instead of guessing.
-        async function inspectGlbFile(url) {
-            try {
-                const response = await fetch(url);
-                const buffer = await response.arrayBuffer();
-                const dataView = new DataView(buffer);
-
-                const magic = dataView.getUint32(0, true);
-                if (magic !== 0x46546c67) {
-                    debugWarn("File does not start with the glTF binary magic number (0x46546C67) — may not be a valid .glb.");
-                    return;
-                }
-
-                const version = dataView.getUint32(4, true);
-                const totalLength = dataView.getUint32(8, true);
-                debugLog(`GLB header — version: ${version}, declared length: ${totalLength}, actual bytes fetched: ${buffer.byteLength}`);
-
-                let offset = 12;
-                let jsonChunk = null;
-                while (offset < buffer.byteLength) {
-                    const chunkLength = dataView.getUint32(offset, true);
-                    const chunkType = dataView.getUint32(offset + 4, true);
-                    const chunkTypeStr = String.fromCharCode(
-                        chunkType & 0xff,
-                        (chunkType >> 8) & 0xff,
-                        (chunkType >> 16) & 0xff,
-                        (chunkType >> 24) & 0xff
-                    );
-                    if (chunkTypeStr === "JSON") {
-                        const jsonBytes = new Uint8Array(buffer, offset + 8, chunkLength);
-                        jsonChunk = JSON.parse(new TextDecoder("utf-8").decode(jsonBytes));
-                    }
-                    offset += 8 + chunkLength;
-                }
-
-                if (!jsonChunk) {
-                    debugError("Could not find a JSON chunk inside this .glb — the file may be malformed/truncated.");
-                    return;
-                }
-
-                debugLog(
-                    `GLTF contents — meshes: ${jsonChunk.meshes ? jsonChunk.meshes.length : 0}, ` +
-                    `accessors: ${jsonChunk.accessors ? jsonChunk.accessors.length : 0}, ` +
-                    `nodes: ${jsonChunk.nodes ? jsonChunk.nodes.length : 0}`
-                );
-
-                if (jsonChunk.extensionsUsed && jsonChunk.extensionsUsed.length) {
-                    debugWarn("extensionsUsed: " + jsonChunk.extensionsUsed.join(", "));
-                } else {
-                    debugLog("No extensionsUsed listed — file does not use any glTF extensions.");
-                }
-
-                if (jsonChunk.extensionsRequired && jsonChunk.extensionsRequired.length) {
-                    debugError(
-                        "extensionsRequired: " + jsonChunk.extensionsRequired.join(", ") +
-                        " — if the AR page's loader doesn't support these, geometry will fail to decode " +
-                        "(often WITHOUT throwing a visible error, which matches what we're seeing)."
-                    );
-                }
-            } catch (err) {
-                debugError("Failed to inspect .glb file contents:", err.message);
-            }
-        }
-
-        inspectGlbFile(furniture.model);
-
-        // ---------- Scene / MindAR lifecycle logging ----------
-        scene.addEventListener("loaded", () => {
-            debugLog("a-scene 'loaded' event fired (DOM + assets ready).");
-        });
-
-        scene.addEventListener("renderstart", () => {
-            debugLog("a-scene 'renderstart' event fired (render loop running).");
-        });
-
-        scene.addEventListener("arReady", () => {
-            debugLog("MindAR 'arReady' event fired (camera + tracker initialized).");
-        });
-
-        scene.addEventListener("arError", (event) => {
-            debugError("MindAR 'arError' event fired:", JSON.stringify(event.detail));
-        });
-
-        scene.setAttribute(
-            "mindar-image",
-            `imageTargetSrc: ${furniture.marker}; autoStart: true; uiScanning: yes; uiLoading: yes;`
-        );
-        debugLog("mindar-image attribute set on scene.");
-
-        // Set the model's src directly to the .glb URL instead of an
-        // <a-asset-item>, so it (re)loads immediately with a correct
-        // binary fetch.
-        model.setAttribute("gltf-model", furniture.model);
-        debugLog("gltf-model attribute set on model entity — waiting for model-loaded / model-error...");
-
-        // How large the model should appear, relative to the marker's own
-        // physical width (MindAR treats the marker's printed width as "1"
-        // unit in its coordinate space — this is NOT relative to screen
-        // size). 0.7 means "70% as wide as the marker image itself," which
-        // can easily overflow the camera view if you're holding the phone
-        // close to the marker. Tune this down/up to taste — try values
-        // between roughly 0.2 and 0.5 depending on your marker's printed
-        // size and how close you expect people to hold the camera.
-        const MODEL_FIT_SIZE = 0.3;
+        scene.setAttribute("mindar-image", `imageTargetSrc: ${furniture.marker}; autoStart: true; uiScanning: yes; uiLoading: yes;`);
+        asset.setAttribute("src", furniture.model);
 
         model.addEventListener("model-loaded", (event) => {
-            debugLog("model-loaded fired.");
-
             const threeModel = event.detail.model;
-            if (!threeModel) {
-                debugError("model-loaded fired but event.detail.model is empty/undefined.");
-                return;
-            }
-
             const three = AFRAME.THREE;
-
-            // Make sure world matrices are current before measuring —
-            // otherwise a bounding box read immediately on load can be wrong.
-            threeModel.updateMatrixWorld(true);
-
-            // Count meshes and inspect each one's own geometry bounds.
-            // This tells us WHICH kind of bad data we're dealing with:
-            // no meshes at all, vs meshes with broken (NaN/Infinite) vertices.
-            let meshCount = 0;
-            let badGeometryCount = 0;
-            threeModel.traverse((node) => {
-                if (node.isMesh) {
-                    meshCount++;
-                    const geometry = node.geometry;
-                    if (geometry) {
-                        geometry.computeBoundingBox();
-                        const box = geometry.boundingBox;
-                        const meshBad =
-                            !box ||
-                            !isFinite(box.min.x) || !isFinite(box.min.y) || !isFinite(box.min.z) ||
-                            !isFinite(box.max.x) || !isFinite(box.max.y) || !isFinite(box.max.z);
-                        if (meshBad) {
-                            badGeometryCount++;
-                            debugWarn(`Mesh "${node.name || "(unnamed)"}" has an invalid/NaN geometry bounding box.`);
-                        } else {
-                            debugLog(
-                                `Mesh "${node.name || "(unnamed)"}" bounds OK — min(${box.min.x.toFixed(3)}, ${box.min.y.toFixed(3)}, ${box.min.z.toFixed(3)}) max(${box.max.x.toFixed(3)}, ${box.max.y.toFixed(3)}, ${box.max.z.toFixed(3)})`
-                            );
-                        }
-                    } else {
-                        debugWarn(`Mesh "${node.name || "(unnamed)"}" has no geometry attached.`);
-                    }
-                }
-            });
-            debugLog(`Traversed model — mesh count: ${meshCount}, meshes with bad geometry: ${badGeometryCount}`);
-
-            if (meshCount === 0) {
-                debugError(
-                    "The loaded .glb contains ZERO mesh nodes. The file itself has no visible geometry " +
-                    "(it may be an empty scene, or only contains a camera/light/empty node). This is a " +
-                    "problem with the .glb file, not the AR code — re-export it making sure a mesh is present."
-                );
-            }
-
             const bounds = new three.Box3().setFromObject(threeModel);
             const size = bounds.getSize(new three.Vector3());
             const center = bounds.getCenter(new three.Vector3());
+            const maxDimension = Math.max(size.x, size.y, size.z, 0.001);
 
-            const boundsAreValid =
-                isFinite(size.x) && isFinite(size.y) && isFinite(size.z) &&
-                !(size.x === 0 && size.y === 0 && size.z === 0);
-
-            debugLog(
-                `Overall bounds — size: (${size.x}, ${size.y}, ${size.z})` +
-                (boundsAreValid ? "" : "  <-- INVALID, will skip auto-fit scaling")
-            );
-
-            if (boundsAreValid) {
-                const maxDimension = Math.max(size.x, size.y, size.z, 0.001);
-                threeModel.position.sub(center);
-                threeModel.scale.setScalar(MODEL_FIT_SIZE / maxDimension);
-                model.setAttribute("position", "0 0 0");
-                debugLog(`Auto-fit scale applied: ${(MODEL_FIT_SIZE / maxDimension).toFixed(5)} (target fit size: ${MODEL_FIT_SIZE})`);
-            } else {
-                // Don't apply a NaN/Infinite scale — that silently makes the
-                // whole model invisible even though "visible" is true.
-                // Fall back to an untouched 1:1 scale so at least SOMETHING
-                // renders if there's any geometry at all, and leave a clear
-                // error explaining why auto-fit was skipped.
-                debugError(
-                    "Skipped auto-fit scaling because the bounding box was invalid (NaN or all-zero). " +
-                    "This is almost always caused by the .glb file having no mesh geometry, or geometry " +
-                    "with corrupted vertex data from a bad export — not by this AR/JS code."
-                );
-                model.setAttribute("scale", "1 1 1");
-            }
-
-            model.setAttribute("visible", "true");
-
-            if (meshCount > 0) {
-                // There's at least some real geometry to show — hide the
-                // debug cube so it doesn't get confused with the model.
-                debugCube.setAttribute("visible", "false");
-                debugLog("Model made visible, debug cube hidden.");
-            } else {
-                // Nothing will actually render for this model — leave the
-                // debug cube up so marker tracking is still visibly
-                // confirmed while you fix the .glb file.
-                debugWarn("Leaving debug cube visible — the model has no mesh geometry to display.");
-            }
-
+            threeModel.position.sub(center);
+            threeModel.scale.setScalar(0.7 / maxDimension);
+            model.setAttribute("position", "0 0 0");
             status.textContent = `${furniture.name} ready. Point your camera at the marker.`;
         });
 
-        model.addEventListener("model-error", (event) => {
-            debugError("model-error fired:", JSON.stringify(event.detail));
+        model.addEventListener("model-error", () => {
             status.textContent = `Unable to load the ${furniture.name.toLowerCase()} model.`;
         });
 
-        // ---------- Marker tracking events ----------
         document.getElementById("furniture-target").addEventListener("targetFound", () => {
-            debugLog("targetFound — marker detected.");
             status.textContent = `${furniture.name} detected.`;
         });
 
         document.getElementById("furniture-target").addEventListener("targetLost", () => {
-            debugLog("targetLost — marker no longer visible.");
             status.textContent = "Point your camera at the furniture marker.";
         });
     </script>
