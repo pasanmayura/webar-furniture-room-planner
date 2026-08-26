@@ -6,7 +6,18 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
-        markerAr: resolve(__dirname, 'marker-ar.html')
+
+        markerAr:
+          resolve(
+            __dirname,
+            'marker-ar.html'
+          ),
+
+        markerlessAr:
+          resolve(
+            __dirname,
+            'markerless-ar.html'
+          )
       }
     }
   }
