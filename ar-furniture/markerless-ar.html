@@ -104,6 +104,13 @@
     let canPlaceFurniture = false;
     const placedFurniture = [];
     let placementGuide;
+    let selectedFurniture = null;
+    let isDraggingFurniture = false;
+    let dragStartPosition = null;
+    let dragStartRotation = null;
+    let dragStartControllerYaw = 0;
+    const furnitureRaycaster = new THREE.Raycaster();
+    const furnitureRay = new THREE.Vector3(0, 0, -1);
 
     const furnitureOptions = {
       chair: {
@@ -445,15 +452,22 @@
     }
 
     function checkVirtualFurnitureCollision(position) {
+      return checkVirtualFurnitureCollisionExcept(position, null);
+    }
+
+    function checkVirtualFurnitureCollisionExcept(position, ignoredItem) {
       const proposedBox = createFurnitureBoundingBox(position, getFurnitureSize());
 
       return placedFurniture.some((item) => {
+        if (item === ignoredItem) {
+          return false;
+        }
         return proposedBox.intersectsBox(item.boundingBox);
       });
     }
 
-    function validatePlacement(position, hasEnoughFloor) {
-      const overlapsExistingFurniture = checkVirtualFurnitureCollision(position);
+    function validatePlacement(position, hasEnoughFloor, ignoredItem = null) {
+      const overlapsExistingFurniture = checkVirtualFurnitureCollisionExcept(position, ignoredItem);
 
       canPlaceFurniture = hasEnoughFloor && !overlapsExistingFurniture;
 
@@ -467,6 +481,78 @@
       return canPlaceFurniture;
     }
 
+    function findPlacedFurniture(intersectionObject) {
+      let currentObject = intersectionObject;
+      while (currentObject) {
+        const item = placedFurniture.find((placedItem) => placedItem.object3D === currentObject);
+        if (item) {
+          return item;
+        }
+        currentObject = currentObject.parent;
+      }
+      return null;
+    }
+
+    function selectPlacedFurniture() {
+      scene.updateMatrixWorld(true);
+      furnitureRaycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+      furnitureRaycaster.ray.direction
+        .copy(furnitureRay)
+        .transformDirection(controller.matrixWorld);
+
+      const intersections = furnitureRaycaster.intersectObjects(
+        placedFurniture.map((item) => item.object3D),
+        true
+      );
+
+      return intersections.length > 0
+        ? findPlacedFurniture(intersections[0].object)
+        : null;
+    }
+
+    function startFurnitureDrag() {
+      selectedFurniture = selectPlacedFurniture();
+      if (!selectedFurniture) {
+        return;
+      }
+
+      isDraggingFurniture = true;
+      dragStartPosition = selectedFurniture.object3D.position.clone();
+      dragStartRotation = selectedFurniture.object3D.rotation.clone();
+      const controllerEuler = new THREE.Euler().setFromQuaternion(
+        controller.getWorldQuaternion(new THREE.Quaternion()),
+        'YXZ'
+      );
+      dragStartControllerYaw = controllerEuler.y;
+      info.textContent = `Drag to move ${furniture.name}; rotate your finger to turn it`;
+    }
+
+    function finishFurnitureDrag() {
+      if (!isDraggingFurniture || !selectedFurniture) {
+        return false;
+      }
+
+      if (!canPlaceFurniture) {
+        selectedFurniture.object3D.position.copy(dragStartPosition);
+        selectedFurniture.object3D.rotation.copy(dragStartRotation);
+        updateFurnitureBoundingBox(selectedFurniture);
+        info.textContent = 'Not enough space for this furniture';
+      } else {
+        info.textContent = `${furniture.name} moved successfully`;
+      }
+
+      isDraggingFurniture = false;
+      selectedFurniture = null;
+      dragStartPosition = null;
+      dragStartRotation = null;
+      dragStartControllerYaw = 0;
+      return true;
+    }
+
+    function updateFurnitureBoundingBox(item) {
+      item.boundingBox = createFurnitureBoundingBox(item.object3D.position, getFurnitureSize());
+    }
+
     // CONTROLLER
     function createController() {
 
@@ -474,8 +560,16 @@
         renderer.xr.getController(0);
 
       controller.addEventListener(
-        'select',
-        onSelect
+        'selectstart',
+        startFurnitureDrag
+      );
+      controller.addEventListener(
+        'selectend',
+        () => {
+          if (!finishFurnitureDrag()) {
+            placeNewFurniture();
+          }
+        }
       );
       scene.add(
         controller
@@ -641,6 +735,8 @@
             localReferenceSpace = null;
             planeDetectionAvailable = false;
             canPlaceFurniture = false;
+            isDraggingFurniture = false;
+            selectedFurniture = null;
             reticle.visible = false;
             placementGuide.visible = false;
 
@@ -668,7 +764,7 @@
 
     // PLACE FURNITURE
 
-    function onSelect() {
+    function placeNewFurniture() {
 
       if (!reticle.visible) {
 
@@ -725,13 +821,15 @@
         placedObject
       );
 
-      placedFurniture.push({
+      const placedItem = {
         type: furniture.name,
         object3D: placedObject,
         width: getFurnitureSize().width,
         depth: getFurnitureSize().depth,
         boundingBox: createFurnitureBoundingBox(placedObject.position, getFurnitureSize())
-      });
+      };
+      placedFurniture.push(placedItem);
+      updateFurnitureBoundingBox(placedItem);
 
       console.log(
         `${furniture.name} placed:`,
@@ -836,7 +934,21 @@
               }
               updatePlacementGuideTransform();
               const hasEnoughFloor = checkAvailableFloorSpace(frame, placementPosition);
-              validatePlacement(placementPosition, hasEnoughFloor);
+              if (isDraggingFurniture && selectedFurniture) {
+                selectedFurniture.object3D.position.copy(placementPosition);
+                selectedFurniture.object3D.position.y += 0.01;
+
+                const controllerEuler = new THREE.Euler().setFromQuaternion(
+                  controller.getWorldQuaternion(new THREE.Quaternion()),
+                  'YXZ'
+                );
+                const controllerRotationChange = controllerEuler.y - dragStartControllerYaw;
+                selectedFurniture.object3D.rotation.y = dragStartRotation.y + controllerRotationChange;
+                updateFurnitureBoundingBox(selectedFurniture);
+                validatePlacement(placementPosition, hasEnoughFloor, selectedFurniture);
+              } else {
+                validatePlacement(placementPosition, hasEnoughFloor);
+              }
             }
           }
           else {
