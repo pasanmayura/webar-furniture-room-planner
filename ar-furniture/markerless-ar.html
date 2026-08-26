@@ -308,8 +308,10 @@
 
     function getFootprintOffsets() {
       const { width, depth } = getFurnitureSize();
-      const halfWidth = width / 2;
-      const halfDepth = depth / 2;
+      // Stay slightly inside the furniture edges because floor tracking is
+      // less reliable exactly at the boundary of a detected surface.
+      const halfWidth = width * 0.45;
+      const halfDepth = depth * 0.45;
 
       return [
         { x: -halfWidth, z: -halfDepth },
@@ -358,7 +360,12 @@
         return frame.getHitTestResults(source).length > 0;
       });
 
-      return footprintResults.every(Boolean);
+      const centerIsValid = footprintResults[4];
+      const validCorners = footprintResults.slice(0, 4).filter(Boolean).length;
+
+      // Require the center and most of the surrounding footprint. A single
+      // missed corner should not block placement on an otherwise usable floor.
+      return centerIsValid && validCorners >= 2;
     }
 
     function createFurnitureBoundingBox(position, size) {
@@ -380,7 +387,10 @@
     }
 
     function validatePlacement(position) {
-      const hasEnoughFloor = footprintResults.every(Boolean);
+      const hasEnoughFloor =
+        footprintHitTestSources.length === 5 &&
+        footprintResults[4] &&
+        footprintResults.slice(0, 4).filter(Boolean).length >= 2;
       const overlapsExistingFurniture = checkVirtualFurnitureCollision(position);
 
       canPlaceFurniture = hasEnoughFloor && !overlapsExistingFurniture;
