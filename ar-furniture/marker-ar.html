@@ -25,6 +25,9 @@
             inset: 0;
             width: 100vw;
             height: 100vh;
+            /* Stop the browser from treating drag gestures on the canvas
+               as page scroll/zoom, so our rotate-drag works cleanly on touch. */
+            touch-action: none;
         }
 
         canvas.a-canvas {
@@ -108,12 +111,30 @@
 
         scene.setAttribute(
             "mindar-image",
-            `imageTargetSrc: ${furniture.marker}; autoStart: true; uiScanning: yes; uiLoading: yes;`
+            // filterMinCF / filterBeta tune MindAR's built-in smoothing filter.
+            // Lowering filterMinCF and raising filterBeta trades a little
+            // responsiveness for noticeably less jitter on the tracked marker.
+            // Some shake is inherent to marker tracking + hand tremor and
+            // can't be removed completely, but this reduces it.
+            `imageTargetSrc: ${furniture.marker}; autoStart: true; uiScanning: yes; uiLoading: yes; filterMinCF: 0.0005; filterBeta: 1000;`
         );
 
         model.setAttribute("gltf-model", furniture.model);
 
         const MODEL_FIT_SIZE = 0.3;
+
+        // ---------------------------------------------------------
+        // Rotation state
+        // ---------------------------------------------------------
+        let modelReady = false;
+        let autoRotateEnabled = true;
+        let isDragging = false;
+        let lastPointerX = 0;
+        let resumeAutoRotateTimeoutId = null;
+
+        const AUTO_ROTATE_SPEED = 0.6;        // radians per second
+        const DRAG_ROTATE_SPEED = 0.012;      // radians per pixel of drag
+        const AUTO_ROTATE_RESUME_DELAY = 1500; // ms of inactivity before auto-rotate resumes
 
         model.addEventListener("model-loaded", (event) => {
             const threeModel = event.detail.model;
@@ -143,8 +164,9 @@
             }
 
             model.setAttribute("visible", "true");
+            modelReady = true;
 
-            status.textContent = `${furniture.name} ready. Point your camera at the marker.`;
+            status.textContent = `${furniture.name} ready. Drag to rotate.`;
         });
 
         model.addEventListener("model-error", () => {
@@ -152,11 +174,87 @@
         });
 
         document.getElementById("furniture-target").addEventListener("targetFound", () => {
-            status.textContent = `${furniture.name} detected.`;
+            status.textContent = modelReady ? `${furniture.name} detected. Drag to rotate.` : `${furniture.name} detected.`;
         });
 
         document.getElementById("furniture-target").addEventListener("targetLost", () => {
             status.textContent = "Point your camera at the furniture marker.";
+        });
+
+        // ---------------------------------------------------------
+        // Auto-rotate animation loop
+        // Spins the model around Y at a constant speed, unless the
+        // user is currently dragging (or was dragging very recently).
+        // ---------------------------------------------------------
+        let lastFrameTime = performance.now();
+
+        function animate(now) {
+            const deltaSeconds = (now - lastFrameTime) / 1000;
+            lastFrameTime = now;
+
+            if (modelReady && autoRotateEnabled && !isDragging) {
+                model.object3D.rotation.y += AUTO_ROTATE_SPEED * deltaSeconds;
+            }
+
+            requestAnimationFrame(animate);
+        }
+        requestAnimationFrame(animate);
+
+        // ---------------------------------------------------------
+        // Drag-to-rotate
+        // Pointer events cover both touch and mouse. Dragging left/right
+        // spins the model manually and immediately pauses auto-rotate;
+        // auto-rotate resumes automatically a short while after the user
+        // lets go, so the piece doesn't just sit frozen forever.
+        // ---------------------------------------------------------
+        function pauseAutoRotate() {
+            autoRotateEnabled = false;
+            if (resumeAutoRotateTimeoutId) {
+                clearTimeout(resumeAutoRotateTimeoutId);
+                resumeAutoRotateTimeoutId = null;
+            }
+        }
+
+        function scheduleAutoRotateResume() {
+            if (resumeAutoRotateTimeoutId) {
+                clearTimeout(resumeAutoRotateTimeoutId);
+            }
+            resumeAutoRotateTimeoutId = setTimeout(() => {
+                autoRotateEnabled = true;
+                resumeAutoRotateTimeoutId = null;
+            }, AUTO_ROTATE_RESUME_DELAY);
+        }
+
+        function onPointerDown(event) {
+            if (!modelReady) return;
+            isDragging = true;
+            lastPointerX = event.clientX;
+            pauseAutoRotate();
+            event.target.setPointerCapture?.(event.pointerId);
+        }
+
+        function onPointerMove(event) {
+            if (!isDragging) return;
+            const deltaX = event.clientX - lastPointerX;
+            lastPointerX = event.clientX;
+            model.object3D.rotation.y += deltaX * DRAG_ROTATE_SPEED;
+        }
+
+        function onPointerUp() {
+            if (!isDragging) return;
+            isDragging = false;
+            scheduleAutoRotateResume();
+        }
+
+        // The scene's canvas isn't guaranteed to exist until the scene has
+        // loaded, so attach the drag listeners once it's ready.
+        scene.addEventListener("loaded", () => {
+            const canvas = scene.canvas;
+            canvas.addEventListener("pointerdown", onPointerDown);
+            canvas.addEventListener("pointermove", onPointerMove);
+            canvas.addEventListener("pointerup", onPointerUp);
+            canvas.addEventListener("pointercancel", onPointerUp);
+            canvas.addEventListener("pointerleave", onPointerUp);
         });
     </script>
 
