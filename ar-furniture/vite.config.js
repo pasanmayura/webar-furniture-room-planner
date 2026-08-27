@@ -17,7 +17,13 @@ export default defineConfig({
           resolve(
             __dirname,
             'markerless-ar.html'
-          )
+          ),
+
+        roomPlanner:
+          resolve(
+            __dirname,
+            'room-planner-ar.html'
+          ),
       }
     }
   }
