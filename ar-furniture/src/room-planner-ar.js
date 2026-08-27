@@ -39,6 +39,7 @@ const furnitureButtons = {
 
 let renderer, scene, camera;
 let reticle;
+let placementGuide;
 let hitTestSource = null;
 let hitTestSourceRequested = false;
 let currentSession = null;
@@ -85,6 +86,10 @@ function init() {
   reticle.visible = false;
   scene.add(reticle);
 
+  placementGuide = createPlacementGuide();
+  placementGuide.visible = false;
+  scene.add(placementGuide);
+
   canvas.addEventListener("pointerdown", onCanvasPointerDown);
   canvas.addEventListener("pointermove", onCanvasPointerMove);
   canvas.addEventListener("pointerup", onCanvasPointerUp);
@@ -114,6 +119,72 @@ function createReticle() {
   const ring = new THREE.Mesh(geometry, material);
   ring.matrixAutoUpdate = false;
   return ring;
+}
+
+function createPlacementGuide() {
+  const { width, depth } = footprints[selectedProduct] || footprints.chair;
+  const halfWidth = width / 2;
+  const halfDepth = depth / 2;
+  const geometry = new THREE.BufferGeometry();
+  const vertices = new Float32Array([
+    -halfWidth, 0.02, -halfDepth,
+    halfWidth, 0.02, -halfDepth,
+    halfWidth, 0.02, -halfDepth,
+    halfWidth, 0.02, halfDepth,
+    halfWidth, 0.02, halfDepth,
+    -halfWidth, 0.02, halfDepth,
+    -halfWidth, 0.02, halfDepth,
+    -halfWidth, 0.02, -halfDepth,
+  ]);
+
+  geometry.setAttribute("position", new THREE.BufferAttribute(vertices, 3));
+  const line = new THREE.LineSegments(
+    geometry,
+    new THREE.LineBasicMaterial({ color: 0x00ff00 })
+  );
+  line.matrixAutoUpdate = false;
+  line.visible = false;
+  return line;
+}
+
+function updatePlacementGuideTransform() {
+  if (!placementGuide) return;
+
+  const size = footprints[selectedProduct] || footprints.chair;
+  const halfWidth = size.width / 2;
+  const halfDepth = size.depth / 2;
+  const pos = placementGuide.geometry.attributes.position;
+
+  for (let index = 0; index < pos.count; index += 1) {
+    const x = pos.getX(index);
+    const z = pos.getZ(index);
+    pos.setXYZ(index, x === 0 ? 0 : (Math.abs(x) === halfWidth ? x : x), 0.02, z === 0 ? 0 : (Math.abs(z) === halfDepth ? z : z));
+  }
+
+  pos.needsUpdate = true;
+  placementGuide.matrix.copy(reticle.matrix);
+  placementGuide.visible = reticle.visible;
+}
+
+function setPlacementFeedback(valid) {
+  if (!reticle || !placementGuide) return;
+
+  const color = valid ? 0x00ff00 : 0xff0000;
+  reticle.material.color.set(color);
+  placementGuide.material.color.set(color);
+  placementGuide.visible = reticle.visible;
+}
+
+function getTargetPlacementValidity() {
+  if (!reticle || !reticle.visible) {
+    return false;
+  }
+
+  const position = new THREE.Vector3();
+  position.setFromMatrixPosition(reticle.matrix);
+  position.y = 0;
+
+  return canPlaceFurnitureAt(selectedProduct, position, interactionState.selectedId || null);
 }
 
 function loadAllModels() {
@@ -554,14 +625,16 @@ function render(timestamp, frame) {
         reticle.userData.surfaceSize = estimateSurfaceSize(hit);
         reticle.userData.surfaceBounds = estimateSurfaceBounds(hit);
 
-        const placementIsValid = hasEnoughSpace(selectedProduct);
-        reticle.material.color.set(placementIsValid ? 0x4f6f52 : 0xff5f5f);
+        const placementIsValid = getTargetPlacementValidity();
+        setPlacementFeedback(placementIsValid);
+        updatePlacementGuideTransform();
 
         if (statusMessage.textContent === "Move your phone slowly to find a surface") {
           setStatus("Surface found - tap to place");
         }
       } else {
         reticle.visible = false;
+        placementGuide.visible = false;
         if (statusMessage.textContent === "Surface found - tap to place") {
           setStatus("Move your phone slowly to find a surface");
         }
