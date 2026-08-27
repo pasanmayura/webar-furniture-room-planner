@@ -119,6 +119,7 @@ img {
   font-size: 0.95rem;
   font-weight: 600;
   text-align: center;
+  text-decoration: none;
   transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
 }
 
@@ -224,6 +225,12 @@ img {
   font-size: 1.05rem;
   color: var(--color-text-muted);
   margin-bottom: var(--space-md);
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
 }
 
 /* =========================================================
