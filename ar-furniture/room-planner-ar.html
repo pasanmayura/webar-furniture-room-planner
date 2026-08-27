@@ -247,6 +247,10 @@
       }
 
       function updatePlacementGuide() {
+        if (placementGuide) {
+          scene.remove(placementGuide);
+        }
+
         const { width, depth } = getFurnitureSizeForType();
         const guideGeometry = new THREE.BufferGeometry();
         const halfWidth = width / 2;
