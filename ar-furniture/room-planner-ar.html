@@ -55,11 +55,11 @@
       #exit-ar {
         display: none;
         position: fixed;
+        top: 18px;
         right: 18px;
-        bottom: 24px;
         z-index: 20;
 
-        padding: 14px 18px;
+        padding: 12px 16px;
         border: none;
         border-radius: 10px;
 
@@ -377,6 +377,13 @@
             reticle.visible = false;
             if (placementGuide) {
               placementGuide.visible = false;
+            }
+
+            while (placedFurniture.length > 0) {
+              const item = placedFurniture.pop();
+              if (item && item.object3D) {
+                scene.remove(item.object3D);
+              }
             }
 
             startButton.style.display = 'block';
