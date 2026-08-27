@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, user-scalable=no"
+    />
+
+    <title>Room Planner AR</title>
+
+    <link rel="stylesheet" href="/markerless-ar.css" />
+
+    <style>
+      body {
+        background: #000;
+      }
+
+      #status {
+        position: fixed;
+        top: 16px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 20;
+
+        min-width: min(88vw, 420px);
+        padding: 12px 18px;
+        border-radius: 12px;
+
+        background: rgba(15, 15, 15, 0.8);
+        color: #fff;
+        text-align: center;
+        font-size: 14px;
+        letter-spacing: 0.02em;
+      }
+
+      #start-ar {
+        position: fixed;
+        left: 50%;
+        bottom: 98px;
+        transform: translateX(-50%);
+        z-index: 20;
+
+        padding: 16px 30px;
+        border: none;
+        border-radius: 12px;
+
+        background: #ffffff;
+        color: #111111;
+        font-size: 18px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      #exit-ar {
+        display: none;
+        position: fixed;
+        right: 18px;
+        bottom: 24px;
+        z-index: 20;
+
+        padding: 14px 18px;
+        border: none;
+        border-radius: 10px;
+
+        background: #d94646;
+        color: #ffffff;
+        font-size: 15px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      #remove-selected {
+        display: none;
+        position: fixed;
+        right: 18px;
+        bottom: 96px;
+        z-index: 20;
+
+        padding: 12px 16px;
+        border: none;
+        border-radius: 10px;
+
+        background: #ef4444;
+        color: #ffffff;
+        font-size: 15px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      #selection-bar {
+        position: fixed;
+        left: 50%;
+        bottom: 20px;
+        transform: translateX(-50%);
+        z-index: 20;
+
+        display: flex;
+        gap: 10px;
+        padding: 10px 12px;
+        border-radius: 14px;
+
+        background: rgba(18, 18, 18, 0.72);
+        backdrop-filter: blur(4px);
+      }
+
+      .tool-btn {
+        min-width: 96px;
+        padding: 12px 16px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 10px;
+
+        background: rgba(255, 255, 255, 0.08);
+        color: #ffffff;
+        font-size: 15px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      .tool-btn.active {
+        background: #4ecdc4;
+        color: #0d1117;
+        border-color: #4ecdc4;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="status">Press Start AR</div>
+
+    <button id="start-ar" type="button">Start AR</button>
+    <button id="remove-selected" type="button">Remove Selected</button>
+    <button id="exit-ar" type="button">Exit AR</button>
+
+    <div id="selection-bar" aria-label="Furniture selection controls">
+      <button class="tool-btn active" data-kind="chair" type="button">Chair</button>
+      <button class="tool-btn" data-kind="table" type="button">Table</button>
+      <button class="tool-btn" data-kind="bed" type="button">Bed</button>
+    </div>
+
+    <script type="module">
+      import * as THREE from 'three';
+      import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+
+      const statusEl = document.getElementById('status');
+      const startButton = document.getElementById('start-ar');
+      const exitButton = document.getElementById('exit-ar');
+      const removeButton = document.getElementById('remove-selected');
+      const selectionButtons = [...document.querySelectorAll('.tool-btn')];
+
+      let scene;
+      let camera;
+      let renderer;
+      let controller;
+      let reticle;
+      let placementGuide;
+
+      let hitTestSource = null;
+      let hitTestSourceRequested = false;
+      let activeSession = null;
+      let localReferenceSpace = null;
+      let footprintHitTestSources = [];
+      let footprintHitTestSourcePromise = null;
+      let footprintCenter = null;
+      let footprintResults = [false, false, false, false, false];
+
+      let canPlaceFurniture = false;
+      const furnitureTemplates = {};
+      const placedFurniture = [];
+      let selectedFurniture = null;
+      let isDraggingFurniture = false;
+      let dragStartPosition = null;
+      let dragStartRotation = null;
+      let dragStartControllerYaw = 0;
+
+      const furnitureRaycaster = new THREE.Raycaster();
+      const furnitureRay = new THREE.Vector3(0, 0, -1);
+
+      const furnitureOptions = {
+        chair: { name: 'Chair', model: '/models/chair.glb' },
+        table: { name: 'Table', model: '/models/table.glb' },
+        bed: { name: 'Bed', model: '/models/bed.glb' }
+      };
+
+      const furnitureSizes = {
+        chair: { width: 0.60, depth: 0.65 },
+        table: { width: 1.20, depth: 0.70 },
+        bed: { width: 2.00, depth: 1.60 }
+      };
+
+      let activeFurnitureType = 'chair';
+
+      init();
+
+      function init() {
+        createScene();
+        createLights();
+        createReticle();
+        createController();
+        setupSelectionControls();
+        loadFurnitureModels();
+        setupEvents();
+      }
+
+      function getFurnitureSizeForType(type = activeFurnitureType) {
+        return furnitureSizes[type] || furnitureSizes.chair;
+      }
+
+      function createScene() {
+        scene = new THREE.Scene();
+
+        camera = new THREE.PerspectiveCamera(
+          70,
+          window.innerWidth / window.innerHeight,
+          0.01,
+          20
+        );
+
+        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.xr.enabled = true;
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+        document.body.appendChild(renderer.domElement);
+      }
+
+      function createLights() {
+        const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x444444, 2);
+        scene.add(hemisphereLight);
+
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 2);
+        directionalLight.position.set(1, 3, 2);
+        scene.add(directionalLight);
+      }
+
+      function createReticle() {
+        const geometry = new THREE.RingGeometry(0.08, 0.1, 32);
+        geometry.rotateX(-Math.PI / 2);
+
+        const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+        reticle = new THREE.Mesh(geometry, material);
+        reticle.matrixAutoUpdate = false;
+        reticle.visible = false;
+        scene.add(reticle);
+
+        updatePlacementGuide();
+      }
+
+      function updatePlacementGuide() {
+        const { width, depth } = getFurnitureSizeForType();
+        const guideGeometry = new THREE.BufferGeometry();
+        const halfWidth = width / 2;
+        const halfDepth = depth / 2;
+
+        const vertices = new Float32Array([
+          -halfWidth, 0.01, -halfDepth, halfWidth, 0.01, -halfDepth,
+          halfWidth, 0.01, -halfDepth, halfWidth, 0.01, halfDepth,
+          halfWidth, 0.01, halfDepth, -halfWidth, 0.01, halfDepth,
+          -halfWidth, 0.01, halfDepth, -halfWidth, 0.01, -halfDepth
+        ]);
+
+        guideGeometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+
+        placementGuide = new THREE.LineSegments(
+          guideGeometry,
+          new THREE.LineBasicMaterial({ color: 0xff0000 })
+        );
+
+        placementGuide.matrixAutoUpdate = false;
+        placementGuide.visible = false;
+        scene.add(placementGuide);
+      }
+
+      function setPlacementFeedback(isValid, message) {
+        const color = isValid ? 0x00ff00 : 0xff0000;
+        reticle.material.color.set(color);
+        if (placementGuide) {
+          placementGuide.material.color.set(color);
+        }
+        statusEl.textContent = message;
+      }
+
+      function updatePlacementGuideTransform() {
+        if (!placementGuide) {
+          return;
+        }
+        placementGuide.matrix.copy(reticle.matrix);
+        placementGuide.visible = reticle.visible;
+      }
+
+      function setupSelectionControls() {
+        selectionButtons.forEach((button) => {
+          button.addEventListener('click', () => {
+            activeFurnitureType = button.dataset.kind;
+            selectionButtons.forEach((btn) => btn.classList.toggle('active', btn === button));
+            updatePlacementGuide();
+            statusEl.textContent = `${furnitureOptions[activeFurnitureType].name} selected`;
+          });
+        });
+      }
+
+      function loadFurnitureModels() {
+        const loader = new GLTFLoader();
+
+        Object.entries(furnitureOptions).forEach(([key, option]) => {
+          loader.load(
+            option.model,
+            (gltf) => {
+              const model = gltf.scene;
+              model.scale.set(0.5, 0.5, 0.5);
+              furnitureTemplates[key] = model;
+              statusEl.textContent = `${option.name} ready`;
+            },
+            undefined,
+            (error) => {
+              console.error(`Failed to load ${key}`, error);
+            }
+          );
+        });
+      }
+
+      function setupEvents() {
+        startButton.addEventListener('click', startAR);
+        exitButton.addEventListener('click', exitAR);
+        removeButton.addEventListener('click', removeSelectedFurniture);
+        window.addEventListener('resize', onWindowResize);
+      }
+
+      async function startAR() {
+        if (!navigator.xr) {
+          statusEl.textContent = 'WebXR is not supported on this device.';
+          return;
+        }
+
+        try {
+          const supported = await navigator.xr.isSessionSupported('immersive-ar');
+          if (!supported) {
+            statusEl.textContent = 'Markerless AR is not supported on this device.';
+            return;
+          }
+
+          const session = await navigator.xr.requestSession('immersive-ar', {
+            requiredFeatures: ['hit-test'],
+            optionalFeatures: ['dom-overlay', 'plane-detection'],
+            domOverlay: { root: document.body }
+          });
+
+          activeSession = session;
+          renderer.xr.setReferenceSpaceType('local');
+          localReferenceSpace = await session.requestReferenceSpace('local');
+          await renderer.xr.setSession(session);
+
+          startButton.style.display = 'none';
+          exitButton.style.display = 'block';
+          statusEl.textContent = 'Move your phone slowly to find a surface';
+
+          renderer.setAnimationLoop(render);
+
+          session.addEventListener('end', () => {
+            renderer.setAnimationLoop(null);
+
+            hitTestSource = null;
+            hitTestSourceRequested = false;
+            footprintHitTestSources.forEach((source) => source.cancel());
+            footprintHitTestSources = [];
+            footprintHitTestSourcePromise = null;
+            footprintCenter = null;
+            footprintResults = [false, false, false, false, false];
+            localReferenceSpace = null;
+            activeSession = null;
+            canPlaceFurniture = false;
+            isDraggingFurniture = false;
+            selectedFurniture = null;
+            reticle.visible = false;
+            if (placementGuide) {
+              placementGuide.visible = false;
+            }
+
+            startButton.style.display = 'block';
+            exitButton.style.display = 'none';
+            removeButton.style.display = 'none';
+            statusEl.textContent = 'Press Start AR';
+          });
+        } catch (error) {
+          console.error('AR session error:', error);
+          statusEl.textContent = 'Could not start AR session.';
+        }
+      }
+
+      function exitAR() {
+        if (activeSession) {
+          activeSession.end();
+        }
+      }
+
+      function createFootprintOffsets(size) {
+        const halfWidth = size.width * 0.45;
+        const halfDepth = size.depth * 0.45;
+
+        return [
+          { x: -halfWidth, z: -halfDepth },
+          { x: halfWidth, z: -halfDepth },
+          { x: -halfWidth, z: halfDepth },
+          { x: halfWidth, z: halfDepth },
+          { x: 0, z: 0 }
+        ];
+      }
+
+      async function createFootprintHitTestSources(center, size) {
+        if (!localReferenceSpace || footprintHitTestSourcePromise) {
+          return;
+        }
+
+        footprintCenter = center.clone();
+        footprintHitTestSourcePromise = Promise.all(
+          createFootprintOffsets(size).map((offset) => {
+            const offsetSpace = localReferenceSpace.getOffsetReferenceSpace(
+              new XRRigidTransform({
+                x: center.x + offset.x,
+                y: center.y + 0.05,
+                z: center.z + offset.z
+              })
+            );
+
+            return renderer.xr.getSession().requestHitTestSource({
+              space: offsetSpace,
+              offsetRay: new XRRay({ direction: { x: 0, y: -1, z: 0 } })
+            });
+          })
+        )
+          .then((sources) => {
+            footprintHitTestSources = sources;
+            footprintHitTestSourcePromise = null;
+          })
+          .catch(() => {
+            footprintHitTestSources = [];
+            footprintHitTestSourcePromise = null;
+          });
+      }
+
+      function isPointInsidePlane(frame, plane, worldPoint) {
+        const pose = frame.getPose(plane.planeSpace, localReferenceSpace);
+        if (!pose || !plane.polygon || plane.polygon.length < 3) {
+          return false;
+        }
+
+        const planeMatrix = new THREE.Matrix4().fromArray(pose.transform.matrix).invert();
+        const planePoint = worldPoint.clone().applyMatrix4(planeMatrix);
+        let inside = false;
+
+        for (let index = 0, previous = plane.polygon.length - 1; index < plane.polygon.length; previous = index++) {
+          const currentPoint = plane.polygon[index];
+          const previousPoint = plane.polygon[previous];
+          const intersects =
+            (currentPoint.z > planePoint.z) !== (previousPoint.z > planePoint.z) &&
+            planePoint.x <
+              ((previousPoint.x - currentPoint.x) * (planePoint.z - currentPoint.z)) /
+                (previousPoint.z - currentPoint.z) +
+              currentPoint.x;
+
+          if (intersects) {
+            inside = !inside;
+          }
+        }
+
+        return inside;
+      }
+
+      function checkDetectedPlaneSpace(frame, center, size) {
+        if (!frame.detectedPlanes || !localReferenceSpace) {
+          return null;
+        }
+
+        const halfWidth = size.width / 2;
+        const halfDepth = size.depth / 2;
+        const footprintPoints = [
+          new THREE.Vector3(center.x - halfWidth, center.y, center.z - halfDepth),
+          new THREE.Vector3(center.x + halfWidth, center.y, center.z - halfDepth),
+          new THREE.Vector3(center.x - halfWidth, center.y, center.z + halfDepth),
+          new THREE.Vector3(center.x + halfWidth, center.y, center.z + halfDepth)
+        ];
+
+        for (const plane of frame.detectedPlanes) {
+          if (plane.orientation !== 'horizontal') {
+            continue;
+          }
+
+          const planePose = frame.getPose(plane.planeSpace, localReferenceSpace);
+          if (!planePose || Math.abs(planePose.transform.position.y - center.y) > 0.12) {
+            continue;
+          }
+
+          if (footprintPoints.every((point) => isPointInsidePlane(frame, plane, point))) {
+            return true;
+          }
+        }
+
+        return false;
+      }
+
+      function checkAvailableFloorSpace(frame, center, size) {
+        const detectedPlaneResult = checkDetectedPlaneSpace(frame, center, size);
+        if (detectedPlaneResult !== null) {
+          return detectedPlaneResult;
+        }
+
+        if (footprintHitTestSources.length !== 5) {
+          return false;
+        }
+
+        footprintResults = footprintHitTestSources.map((source) => frame.getHitTestResults(source).length > 0);
+
+        const centerIsValid = footprintResults[4];
+        const validCorners = footprintResults.slice(0, 4).filter(Boolean).length;
+
+        return centerIsValid && validCorners === 4;
+      }
+
+      function createFurnitureBoundingBox(position, size) {
+        const halfWidth = size.width / 2;
+        const halfDepth = size.depth / 2;
+
+        return new THREE.Box3(
+          new THREE.Vector3(position.x - halfWidth, position.y - 0.05, position.z - halfDepth),
+          new THREE.Vector3(position.x + halfWidth, position.y + 0.3, position.z + halfDepth)
+        );
+      }
+
+      function updateFurnitureBoundingBox(item) {
+        item.boundingBox = createFurnitureBoundingBox(item.object3D.position, getFurnitureSizeForType(item.type));
+      }
+
+      function checkVirtualFurnitureCollisionExcept(position, ignoredItem, size) {
+        const proposedBox = createFurnitureBoundingBox(position, size);
+
+        return placedFurniture.some((item) => {
+          if (item === ignoredItem) {
+            return false;
+          }
+
+          return proposedBox.intersectsBox(item.boundingBox);
+        });
+      }
+
+      function validatePlacement(position, hasEnoughFloor, ignoredItem = null, type = activeFurnitureType) {
+        const size = getFurnitureSizeForType(type);
+        const overlapsExistingFurniture = checkVirtualFurnitureCollisionExcept(position, ignoredItem, size);
+
+        canPlaceFurniture = hasEnoughFloor && !overlapsExistingFurniture;
+
+        if (overlapsExistingFurniture) {
+          setPlacementFeedback(false, 'Not enough space');
+        } else if (hasEnoughFloor) {
+          setPlacementFeedback(true, 'Surface found - tap to place');
+        } else {
+          setPlacementFeedback(false, 'Not enough space');
+        }
+
+        return canPlaceFurniture;
+      }
+
+      function findPlacedFurniture(intersectionObject) {
+        let currentObject = intersectionObject;
+        while (currentObject) {
+          const item = placedFurniture.find((placedItem) => placedItem.object3D === currentObject);
+          if (item) {
+            return item;
+          }
+          currentObject = currentObject.parent;
+        }
+        return null;
+      }
+
+      function selectPlacedFurniture() {
+        scene.updateMatrixWorld(true);
+        furnitureRaycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+        furnitureRaycaster.ray.direction.copy(furnitureRay).transformDirection(controller.matrixWorld);
+
+        const intersections = furnitureRaycaster.intersectObjects(
+          placedFurniture.map((item) => item.object3D),
+          true
+        );
+
+        return intersections.length > 0 ? findPlacedFurniture(intersections[0].object) : null;
+      }
+
+      function createController() {
+        controller = renderer.xr.getController(0);
+        controller.addEventListener('selectstart', handleSelectStart);
+        controller.addEventListener('selectend', handleSelectEnd);
+        scene.add(controller);
+      }
+
+      function handleSelectStart() {
+        selectedFurniture = selectPlacedFurniture();
+        if (!selectedFurniture) {
+          return;
+        }
+
+        isDraggingFurniture = true;
+        dragStartPosition = selectedFurniture.object3D.position.clone();
+        dragStartRotation = selectedFurniture.object3D.rotation.clone();
+
+        const controllerEuler = new THREE.Euler().setFromQuaternion(
+          controller.getWorldQuaternion(new THREE.Quaternion()),
+          'YXZ'
+        );
+        dragStartControllerYaw = controllerEuler.y;
+
+        removeButton.style.display = 'block';
+        statusEl.textContent = `${furnitureOptions[selectedFurniture.type].name} selected`;
+      }
+
+      function handleSelectEnd() {
+        if (isDraggingFurniture && selectedFurniture) {
+          finishFurnitureDrag();
+          return;
+        }
+
+        placeSelectedFurniture();
+      }
+
+      function finishFurnitureDrag() {
+        if (!isDraggingFurniture || !selectedFurniture) {
+          return false;
+        }
+
+        if (!canPlaceFurniture) {
+          selectedFurniture.object3D.position.copy(dragStartPosition);
+          selectedFurniture.object3D.rotation.copy(dragStartRotation);
+          updateFurnitureBoundingBox(selectedFurniture);
+          statusEl.textContent = 'Not enough space';
+        } else {
+          statusEl.textContent = `${furnitureOptions[selectedFurniture.type].name} placed`;
+        }
+
+        isDraggingFurniture = false;
+        selectedFurniture = null;
+        dragStartPosition = null;
+        dragStartRotation = null;
+        dragStartControllerYaw = 0;
+
+        return true;
+      }
+
+      function placeSelectedFurniture() {
+        if (!reticle.visible) {
+          statusEl.textContent = 'Move your phone slowly to find a surface';
+          return;
+        }
+
+        if (!canPlaceFurniture) {
+          statusEl.textContent = 'Not enough space';
+          return;
+        }
+
+        const template = furnitureTemplates[activeFurnitureType];
+        if (!template) {
+          statusEl.textContent = 'Furniture model is still loading';
+          return;
+        }
+
+        const placedObject = template.clone(true);
+        const size = getFurnitureSizeForType(activeFurnitureType);
+
+        const position = new THREE.Vector3();
+        position.setFromMatrixPosition(reticle.matrix);
+        placedObject.position.copy(position);
+        placedObject.position.y += 0.01;
+        placedObject.scale.set(0.5, 0.5, 0.5);
+
+        scene.add(placedObject);
+
+        const placedItem = {
+          type: activeFurnitureType,
+          object3D: placedObject,
+          width: size.width,
+          depth: size.depth,
+          boundingBox: createFurnitureBoundingBox(placedObject.position, size)
+        };
+
+        placedFurniture.push(placedItem);
+        updateFurnitureBoundingBox(placedItem);
+
+        selectedFurniture = placedItem;
+        removeButton.style.display = 'block';
+        statusEl.textContent = `${furnitureOptions[activeFurnitureType].name} placed`;
+      }
+
+      function removeSelectedFurniture() {
+        if (!selectedFurniture) {
+          statusEl.textContent = 'No furniture selected';
+          return;
+        }
+
+        scene.remove(selectedFurniture.object3D);
+        const index = placedFurniture.indexOf(selectedFurniture);
+        if (index >= 0) {
+          placedFurniture.splice(index, 1);
+        }
+
+        selectedFurniture = null;
+        removeButton.style.display = 'none';
+        statusEl.textContent = 'Furniture removed';
+      }
+
+      function render(timestamp, frame) {
+        if (!frame || !localReferenceSpace) {
+          renderer.render(scene, camera);
+          return;
+        }
+
+        if (!hitTestSourceRequested) {
+          const session = renderer.xr.getSession();
+          if (session) {
+            session.requestReferenceSpace('viewer').then((viewerSpace) => {
+              session.requestHitTestSource({ space: viewerSpace }).then((source) => {
+                hitTestSource = source;
+              });
+            });
+          }
+          hitTestSourceRequested = true;
+        }
+
+        if (hitTestSource) {
+          const hitTestResults = frame.getHitTestResults(hitTestSource);
+
+          if (hitTestResults.length > 0) {
+            const hit = hitTestResults[0];
+            const pose = hit.getPose(localReferenceSpace);
+
+            if (pose) {
+              reticle.visible = true;
+              reticle.matrix.fromArray(pose.transform.matrix);
+
+              const placementPosition = new THREE.Vector3();
+              placementPosition.setFromMatrixPosition(reticle.matrix);
+
+              if (!footprintCenter || footprintCenter.distanceTo(placementPosition) > 0.15) {
+                footprintHitTestSources.forEach((source) => source.cancel());
+                footprintHitTestSources = [];
+                footprintResults = [false, false, false, false, false];
+                createFootprintHitTestSources(placementPosition, getFurnitureSizeForType());
+              }
+
+              updatePlacementGuideTransform();
+
+              const hasEnoughFloor = checkAvailableFloorSpace(frame, placementPosition, getFurnitureSizeForType());
+
+              if (isDraggingFurniture && selectedFurniture) {
+                selectedFurniture.object3D.position.copy(placementPosition);
+                selectedFurniture.object3D.position.y += 0.01;
+
+                const controllerEuler = new THREE.Euler().setFromQuaternion(
+                  controller.getWorldQuaternion(new THREE.Quaternion()),
+                  'YXZ'
+                );
+                const controllerRotationChange = controllerEuler.y - dragStartControllerYaw;
+                selectedFurniture.object3D.rotation.y = dragStartRotation.y + controllerRotationChange;
+
+                updateFurnitureBoundingBox(selectedFurniture);
+                validatePlacement(placementPosition, hasEnoughFloor, selectedFurniture, selectedFurniture.type);
+              } else {
+                validatePlacement(placementPosition, hasEnoughFloor, null, activeFurnitureType);
+              }
+            }
+          } else {
+            reticle.visible = false;
+            canPlaceFurniture = false;
+            if (placementGuide) {
+              placementGuide.visible = false;
+            }
+            statusEl.textContent = 'Move your phone slowly to find a surface';
+          }
+        }
+
+        renderer.render(scene, camera);
+      }
+
+      function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      }
+    </script>
+  </body>
+</html>
