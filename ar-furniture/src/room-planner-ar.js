@@ -1,12 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
-// ---------------------------------------------------------
-// Config
-// ---------------------------------------------------------
-
-// Reusable model templates — cloned into the scene on each placement
-// so the same loaded geometry/material can be placed multiple times.
 const furnitureTemplates = {
   chair: null,
   table: null,
@@ -19,8 +13,6 @@ const modelPaths = {
   bed: "/models/bed.glb",
 };
 
-// Rough real-world footprint (metres) used for the "enough space" check
-// against the size of the detected hit-test surface.
 const footprints = {
   chair: { width: 0.6, depth: 0.65 },
   table: { width: 1.2, depth: 0.7 },
@@ -29,9 +21,6 @@ const footprints = {
 
 let selectedProduct = "chair";
 
-// ---------------------------------------------------------
-// DOM references
-// ---------------------------------------------------------
 const statusMessage = document.getElementById("statusMessage");
 const startWrap = document.getElementById("startWrap");
 const startArBtn = document.getElementById("startArBtn");
@@ -39,6 +28,8 @@ const backLink = document.getElementById("backLink");
 const furnitureControls = document.getElementById("furnitureControls");
 const arHint = document.getElementById("arHint");
 const canvas = document.getElementById("arScene");
+const rotateButton = document.getElementById("btnRotate");
+const removeButton = document.getElementById("btnRemove");
 
 const furnitureButtons = {
   chair: document.getElementById("btnChair"),
@@ -46,9 +37,6 @@ const furnitureButtons = {
   bed: document.getElementById("btnBed"),
 };
 
-// ---------------------------------------------------------
-// Three.js / WebXR state
-// ---------------------------------------------------------
 let renderer, scene, camera;
 let reticle;
 let hitTestSource = null;
@@ -56,6 +44,12 @@ let hitTestSourceRequested = false;
 let currentSession = null;
 
 const placedFurniture = [];
+const interactionState = {
+  selectedId: null,
+  dragging: false,
+  dragOffset: new THREE.Vector3(),
+};
+
 let hintTimeoutId = null;
 
 init();
@@ -91,10 +85,17 @@ function init() {
   reticle.visible = false;
   scene.add(reticle);
 
+  canvas.addEventListener("pointerdown", onCanvasPointerDown);
+  canvas.addEventListener("pointermove", onCanvasPointerMove);
+  canvas.addEventListener("pointerup", onCanvasPointerUp);
+  canvas.addEventListener("pointercancel", onCanvasPointerUp);
+  canvas.style.touchAction = "none";
+
   window.addEventListener("resize", onWindowResize);
 
   setupFurnitureControls();
   loadAllModels();
+  setInteractionButtonsState();
 
   if (!("xr" in navigator)) {
     setStatus("WebXR is not available on this device or browser");
@@ -103,11 +104,10 @@ function init() {
   }
 
   startArBtn.addEventListener("click", onStartArClicked);
+  rotateButton.addEventListener("click", rotateSelectedFurniture);
+  removeButton.addEventListener("click", removeSelectedFurniture);
 }
 
-// ---------------------------------------------------------
-// Reticle (surface indicator)
-// ---------------------------------------------------------
 function createReticle() {
   const geometry = new THREE.RingGeometry(0.07, 0.09, 32).rotateX(-Math.PI / 2);
   const material = new THREE.MeshBasicMaterial({ color: 0x4f6f52 });
@@ -116,9 +116,6 @@ function createReticle() {
   return ring;
 }
 
-// ---------------------------------------------------------
-// Loading the three reusable model templates
-// ---------------------------------------------------------
 function loadAllModels() {
   const loader = new GLTFLoader();
   const productKeys = Object.keys(modelPaths);
@@ -144,9 +141,6 @@ function loadAllModels() {
   });
 }
 
-// ---------------------------------------------------------
-// Furniture selection UI
-// ---------------------------------------------------------
 function setupFurnitureControls() {
   Object.keys(furnitureButtons).forEach((key) => {
     furnitureButtons[key].addEventListener("click", () => {
@@ -166,9 +160,16 @@ function selectProduct(key) {
   setStatus(`${label} selected`);
 }
 
-// ---------------------------------------------------------
-// Starting the AR session (markerless, hit-test based)
-// ---------------------------------------------------------
+function setInteractionButtonsState() {
+  const hasSelection = Boolean(getSelectedFurniture());
+  rotateButton.disabled = !hasSelection;
+  removeButton.disabled = !hasSelection;
+}
+
+function getSelectedFurniture() {
+  return placedFurniture.find((item) => item.id === interactionState.selectedId) || null;
+}
+
 function onStartArClicked() {
   if (currentSession) return;
 
@@ -229,9 +230,6 @@ function onSessionEnded() {
   setStatus("Press Start AR");
 }
 
-// ---------------------------------------------------------
-// Handling a tap ("select" event) to place furniture
-// ---------------------------------------------------------
 function onSelect() {
   if (!reticle.visible) {
     return;
@@ -244,29 +242,84 @@ function onSelect() {
     return;
   }
 
-  if (!hasEnoughSpace(selectedProduct)) {
-    setStatus("Not enough space");
-    showHint("Try a more open area of the surface");
+  const placementPosition = reticle.position.clone();
+  placementPosition.y = 0;
+
+  if (!canPlaceFurnitureAt(selectedProduct, placementPosition)) {
+    setStatus("Not enough space or this spot is blocked");
+    showHint("Try a more open area or another spot");
     return;
   }
 
-  const instance = template.clone(true);
-  instance.position.setFromMatrixPosition(reticle.matrix);
-  instance.quaternion.setFromRotationMatrix(reticle.matrix);
+  const item = createPlacedFurniture(selectedProduct, placementPosition, 0);
+  selectFurniture(item);
 
-  scene.add(instance);
-  placedFurniture.push({ product: selectedProduct, object: instance });
-
-  const label =
-    selectedProduct.charAt(0).toUpperCase() + selectedProduct.slice(1);
+  const label = selectedProduct.charAt(0).toUpperCase() + selectedProduct.slice(1);
   setStatus(`${label} placed`);
 }
 
-// Rough space check: compares the item's footprint against the size of
-// the detected surface reported by the last hit-test result.
+function createPlacedFurniture(product, position, rotationY = 0) {
+  const template = furnitureTemplates[product];
+  const instance = template.clone(true);
+  instance.position.copy(position);
+  instance.rotation.set(0, rotationY, 0);
+  instance.position.y = 0;
+
+  const item = {
+    id: crypto.randomUUID(),
+    product,
+    object: instance,
+    rotationY,
+    bounds: null,
+  };
+
+  instance.userData.furnitureItem = item;
+  instance.traverse((child) => {
+    child.userData.furnitureItem = item;
+    if (child.isMesh && child.material) {
+      child.material.needsUpdate = true;
+    }
+  });
+
+  scene.add(instance);
+  placedFurniture.push(item);
+  updateFurnitureBounds(item);
+  return item;
+}
+
+function updateFurnitureBounds(item) {
+  const required = footprints[item.product];
+  const position = item.object.position;
+  item.bounds = {
+    minX: position.x - required.width / 2,
+    maxX: position.x + required.width / 2,
+    minZ: position.z - required.depth / 2,
+    maxZ: position.z + required.depth / 2,
+  };
+}
+
+function intersects(a, b) {
+  return !(a.maxX < b.minX || a.minX > b.maxX || a.maxZ < b.minZ || a.minZ > b.maxZ);
+}
+
+function getAvailableSurfaceBounds() {
+  if (reticle && reticle.userData.surfaceBounds) {
+    return reticle.userData.surfaceBounds;
+  }
+
+  return {
+    minX: -1.25,
+    maxX: 1.25,
+    minZ: -1.25,
+    maxZ: 1.25,
+    width: 2.5,
+    depth: 2.5,
+  };
+}
+
 function hasEnoughSpace(product) {
   const required = footprints[product];
-  const available = reticle.userData.surfaceSize;
+  const available = getAvailableSurfaceBounds();
 
   if (!required || !available) {
     return true;
@@ -275,9 +328,203 @@ function hasEnoughSpace(product) {
   return available.width >= required.width && available.depth >= required.depth;
 }
 
-// ---------------------------------------------------------
-// Render loop / hit-testing
-// ---------------------------------------------------------
+function canPlaceFurnitureAt(product, position, ignoreId = null) {
+  const required = footprints[product];
+  const surface = getAvailableSurfaceBounds();
+
+  if (!hasEnoughSpace(product)) {
+    return false;
+  }
+
+  const candidateBounds = {
+    minX: position.x - required.width / 2,
+    maxX: position.x + required.width / 2,
+    minZ: position.z - required.depth / 2,
+    maxZ: position.z + required.depth / 2,
+  };
+
+  const fitsOnSurface =
+    candidateBounds.minX >= surface.minX &&
+    candidateBounds.maxX <= surface.maxX &&
+    candidateBounds.minZ >= surface.minZ &&
+    candidateBounds.maxZ <= surface.maxZ;
+
+  if (!fitsOnSurface) {
+    return false;
+  }
+
+  for (const item of placedFurniture) {
+    if (item.id === ignoreId) continue;
+    if (intersects(candidateBounds, item.bounds)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function onCanvasPointerDown(event) {
+  if (!currentSession || !reticle.visible) return;
+
+  const hit = getPlacedFurnitureHit(event);
+  if (hit) {
+    const item = hit.object.userData.furnitureItem || hit.object.parent?.userData.furnitureItem;
+    if (!item) return;
+
+    selectFurniture(item);
+    const planePoint = getPointerWorldPointOnFloor(event);
+    if (planePoint) {
+      interactionState.dragging = true;
+      interactionState.dragOffset.copy(planePoint).sub(item.object.position);
+    }
+    return;
+  }
+
+  deselectFurniture();
+}
+
+function onCanvasPointerMove(event) {
+  if (!interactionState.dragging) return;
+
+  const selected = getSelectedFurniture();
+  if (!selected) return;
+
+  const planePoint = getPointerWorldPointOnFloor(event);
+  if (!planePoint) return;
+
+  const proposedPosition = planePoint.clone().sub(interactionState.dragOffset);
+  proposedPosition.y = 0;
+
+  if (!canPlaceFurnitureAt(selected.product, proposedPosition, selected.id)) {
+    showHint("This position overlaps another piece");
+    return;
+  }
+
+  selected.object.position.copy(proposedPosition);
+  updateFurnitureBounds(selected);
+}
+
+function onCanvasPointerUp() {
+  interactionState.dragging = false;
+  interactionState.dragOffset.set(0, 0, 0);
+}
+
+function getPlacedFurnitureHit(event) {
+  const rect = canvas.getBoundingClientRect();
+  const pointer = new THREE.Vector2(
+    ((event.clientX - rect.left) / rect.width) * 2 - 1,
+    -((event.clientY - rect.top) / rect.height) * 2 + 1
+  );
+
+  const raycaster = new THREE.Raycaster();
+  raycaster.setFromCamera(pointer, camera);
+
+  let nearestHit = null;
+  let nearestDistance = Infinity;
+
+  for (const item of placedFurniture) {
+    const hits = raycaster.intersectObject(item.object, true);
+    if (hits.length > 0 && hits[0].distance < nearestDistance) {
+      nearestHit = hits[0];
+      nearestDistance = hits[0].distance;
+    }
+  }
+
+  return nearestHit;
+}
+
+function getPointerWorldPointOnFloor(event) {
+  const rect = canvas.getBoundingClientRect();
+  const pointer = new THREE.Vector2(
+    ((event.clientX - rect.left) / rect.width) * 2 - 1,
+    -((event.clientY - rect.top) / rect.height) * 2 + 1
+  );
+
+  const raycaster = new THREE.Raycaster();
+  raycaster.setFromCamera(pointer, camera);
+  const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  const point = new THREE.Vector3();
+  return raycaster.ray.intersectPlane(plane, point);
+}
+
+function selectFurniture(item) {
+  if (!item) return;
+
+  interactionState.selectedId = item.id;
+  item.object.traverse((child) => {
+    if (child.material) {
+      const materialList = Array.isArray(child.material) ? child.material : [child.material];
+      materialList.forEach((material) => {
+        if (!material.emissive) {
+          material.emissive = new THREE.Color(0x111111);
+        }
+        material.emissiveIntensity = 0.5;
+      });
+    }
+  });
+
+  setInteractionButtonsState();
+}
+
+function deselectFurniture() {
+  const selected = getSelectedFurniture();
+  if (!selected) return;
+
+  selected.object.traverse((child) => {
+    if (child.material) {
+      const materialList = Array.isArray(child.material) ? child.material : [child.material];
+      materialList.forEach((material) => {
+        if (material.emissive) {
+          material.emissiveIntensity = 0;
+        }
+      });
+    }
+  });
+
+  interactionState.selectedId = null;
+  setInteractionButtonsState();
+}
+
+function removeSelectedFurniture() {
+  const selected = getSelectedFurniture();
+  if (!selected) {
+    showHint("Select a furniture to remove");
+    return;
+  }
+
+  scene.remove(selected.object);
+  const index = placedFurniture.findIndex((item) => item.id === selected.id);
+  if (index >= 0) {
+    placedFurniture.splice(index, 1);
+  }
+
+  interactionState.selectedId = null;
+  setInteractionButtonsState();
+  setStatus("Furniture removed");
+}
+
+function rotateSelectedFurniture() {
+  const selected = getSelectedFurniture();
+  if (!selected) {
+    showHint("Select a furniture to rotate");
+    return;
+  }
+
+  const originalRotation = selected.object.rotation.y;
+  const nextRotation = originalRotation + Math.PI / 2;
+  selected.object.rotation.y = nextRotation;
+
+  if (!canPlaceFurnitureAt(selected.product, selected.object.position.clone(), selected.id)) {
+    selected.object.rotation.y = originalRotation;
+    showHint("Rotation would overlap another piece");
+    return;
+  }
+
+  selected.rotationY = nextRotation;
+  updateFurnitureBounds(selected);
+  setStatus("Furniture rotated");
+}
+
 function render(timestamp, frame) {
   if (frame) {
     const referenceSpace = renderer.xr.getReferenceSpace();
@@ -304,18 +551,18 @@ function render(timestamp, frame) {
 
         reticle.visible = true;
         reticle.matrix.fromArray(pose.transform.matrix);
-
-        // Approximate available surface size from the plane, when exposed.
         reticle.userData.surfaceSize = estimateSurfaceSize(hit);
+        reticle.userData.surfaceBounds = estimateSurfaceBounds(hit);
+
+        const placementIsValid = hasEnoughSpace(selectedProduct);
+        reticle.material.color.set(placementIsValid ? 0x4f6f52 : 0xff5f5f);
 
         if (statusMessage.textContent === "Move your phone slowly to find a surface") {
           setStatus("Surface found - tap to place");
         }
       } else {
         reticle.visible = false;
-        if (
-          statusMessage.textContent === "Surface found - tap to place"
-        ) {
+        if (statusMessage.textContent === "Surface found - tap to place") {
           setStatus("Move your phone slowly to find a surface");
         }
       }
@@ -325,17 +572,18 @@ function render(timestamp, frame) {
   renderer.render(scene, camera);
 }
 
-// Best-effort surface size estimate. The Hit Test API does not always
-// expose plane geometry, so this falls back to a generous default so
-// placement isn't blocked when the browser doesn't report it.
-function estimateSurfaceSize(hit) {
+function estimateSurfaceBounds(hit) {
   try {
     if (hit.getPlane) {
       const plane = hit.getPlane();
-      if (plane && plane.polygon) {
-        const xs = plane.polygon.map((p) => p.x);
-        const zs = plane.polygon.map((p) => p.z);
+      if (plane && plane.polygon && plane.polygon.length >= 3) {
+        const xs = plane.polygon.map((point) => point.x);
+        const zs = plane.polygon.map((point) => point.z);
         return {
+          minX: Math.min(...xs),
+          maxX: Math.max(...xs),
+          minZ: Math.min(...zs),
+          maxZ: Math.max(...zs),
           width: Math.max(...xs) - Math.min(...xs),
           depth: Math.max(...zs) - Math.min(...zs),
         };
@@ -345,12 +593,21 @@ function estimateSurfaceSize(hit) {
     // Plane data not available — fall through to default.
   }
 
-  return { width: 2.5, depth: 2.5 };
+  return {
+    minX: -1.25,
+    maxX: 1.25,
+    minZ: -1.25,
+    maxZ: 1.25,
+    width: 2.5,
+    depth: 2.5,
+  };
 }
 
-// ---------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------
+function estimateSurfaceSize(hit) {
+  const bounds = estimateSurfaceBounds(hit);
+  return { width: bounds.width, depth: bounds.depth };
+}
+
 function setStatus(message) {
   statusMessage.textContent = message;
 }

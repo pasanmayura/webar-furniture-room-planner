@@ -31,6 +31,7 @@
       display: block;
       width: 100%;
       height: 100%;
+      touch-action: none;
     }
 
     /* ---------- Top status bar ---------- */
@@ -153,6 +154,16 @@
       border-color: var(--color-accent);
     }
 
+    .furniture-btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .furniture-btn.action {
+      min-width: 86px;
+      background-color: rgba(255,255,255,0.12);
+    }
+
     /* ---------- Placement toast (e.g. "Not enough space") ---------- */
     .ar-hint {
       position: fixed;
@@ -204,6 +215,12 @@
     <button type="button" class="furniture-btn" id="btnBed" data-product="bed">
       <span class="furniture-icon" aria-hidden="true">🛏️</span>
       Bed
+    </button>
+    <button type="button" class="furniture-btn action" id="btnRotate" aria-label="Rotate selected furniture">
+      ↻ Rotate
+    </button>
+    <button type="button" class="furniture-btn action" id="btnRemove" aria-label="Remove selected furniture">
+      🗑 Remove
     </button>
   </div>
 
