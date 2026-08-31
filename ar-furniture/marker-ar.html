@@ -113,6 +113,47 @@
         let previousPointerY = 0;
         let rotationFrame;
         let rotationControlsAttached = false;
+        let audioContext = null;
+        let lastMarkerSoundTime = 0;
+
+        function playMarkerDetectedSound() {
+            const now = performance.now();
+            if (now - lastMarkerSoundTime < 900) {
+                return;
+            }
+
+            lastMarkerSoundTime = now;
+
+            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContextClass) {
+                return;
+            }
+
+            if (!audioContext) {
+                audioContext = new AudioContextClass();
+            }
+
+            if (audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+
+            oscillator.type = 'triangle';
+            oscillator.frequency.setValueAtTime(720, audioContext.currentTime);
+            oscillator.frequency.exponentialRampToValueAtTime(980, audioContext.currentTime + 0.12);
+
+            gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.18, audioContext.currentTime + 0.02);
+            gainNode.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.36);
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+
+            oscillator.start();
+            oscillator.stop(audioContext.currentTime + 0.38);
+        }
 
         function rotateModelAutomatically() {
             if (modelReady && !userIsRotating && model.object3D.visible) {
@@ -241,6 +282,7 @@
 
         document.getElementById("furniture-target").addEventListener("targetFound", () => {
             status.textContent = `${furniture.name} detected.`;
+            playMarkerDetectedSound();
         });
 
         document.getElementById("furniture-target").addEventListener("targetLost", () => {
