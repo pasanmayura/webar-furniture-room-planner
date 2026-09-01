@@ -225,12 +225,23 @@
       }
 
       function createLights() {
-        const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x444444, 2);
-        scene.add(hemisphereLight);
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.8);
+        scene.add(hemiLight);
 
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 2);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
         directionalLight.position.set(1, 3, 2);
+        directionalLight.castShadow = true;
+        directionalLight.shadow.mapSize.set(1024, 1024);
+        directionalLight.shadow.camera.near = 0.1;
+        directionalLight.shadow.camera.far = 6;
+        directionalLight.shadow.camera.left = -2;
+        directionalLight.shadow.camera.right = 2;
+        directionalLight.shadow.camera.top = 2;
+        directionalLight.shadow.camera.bottom = -2;
         scene.add(directionalLight);
+
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
       }
 
       function createReticle() {
@@ -675,6 +686,13 @@
 
         const placedObject = template.clone(true);
         const size = getFurnitureSizeForType(activeFurnitureType);
+
+        placedObject.traverse((node) => {
+          if (node.isMesh) {
+            node.castShadow = true;
+            node.receiveShadow = true;
+          }
+        });
 
         const position = new THREE.Vector3();
         position.setFromMatrixPosition(reticle.matrix);
