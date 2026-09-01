@@ -60,8 +60,7 @@
         vr-mode-ui="enabled: false"
         device-orientation-permission-ui="enabled: false"
         color-space="sRGB"
-        renderer="colorManagement: true; logarithmicDepthBuffer: true; antialias: true"
-        shadow="type: pcfsoft"
+        renderer="colorManagement: true; logarithmicDepthBuffer: true"
     >
 
         <a-entity id="furniture-target" mindar-image-target="targetIndex: 0">
@@ -71,24 +70,18 @@
                 rotation="0 0 0"
                 scale="1 1 1"
                 visible="false"
-                shadow="cast: true; receive: true"
             ></a-gltf-model>
         </a-entity>
 
-        <a-plane
-            id="marker-shadow-plane"
-            position="0 -0.01 0"
-            rotation="-90 0 0"
-            width="1.2"
-            height="1.2"
-            material="color: #000000; transparent: true; opacity: 0.20"
-            shadow="receive: true"
-            visible="false"
-        ></a-plane>
-
         <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
-        <a-entity light="type: ambient; color: #ffffff; intensity: 1.2"></a-entity>
-        <a-entity light="type: directional; color: #ffffff; intensity: 1.7; castShadow: true" position="1 3 2" shadow="cast: true; bias: -0.0001"></a-entity>
+        <a-entity light="type: ambient; color: #ffffff; intensity: 1.5"></a-entity>
+        <a-entity light="type: directional; color: #ffffff; intensity: 2" position="1 3 2"></a-entity>
+
+    </a-scene>
+
+    <script>
+        const furnitureOptions = {
+            chair: {
                 name: "Modern Lounge Chair",
                 model: "/models/chair.glb",
                 marker: "/markers/chair-target.mind"
@@ -111,7 +104,6 @@
 
         const scene = document.getElementById("marker-scene");
         const model = document.getElementById("furniture-model");
-        const shadowPlane = document.getElementById("marker-shadow-plane");
         const status = document.getElementById("marker-status");
         let interactionCanvas = document.querySelector("canvas.a-canvas");
 
@@ -279,7 +271,6 @@
             }
 
             model.setAttribute("visible", "true");
-            shadowPlane.setAttribute("visible", "true");
             modelReady = true;
 
             status.textContent = `${furniture.name} ready. Point your camera at the marker.`;
