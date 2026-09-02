@@ -12,21 +12,32 @@
             body {
                 margin: 0;
                 overflow: hidden;
-                width: 100vw;
-                height: 100vh;
+                width: 100%;
+                height: 100%;
+                height: 100dvh;
+                background: #000;
             }
 
             a-scene {
                 position: fixed;
                 inset: 0;
-                width: 100vw;
-                height: 100vh;
+                width: 100%;
+                height: 100%;
+                height: 100dvh;
             }
 
             canvas.a-canvas {
                 width: 100% !important;
                 height: 100% !important;
                 touch-action: none;
+            }
+
+            video.mindar-video {
+                position: fixed !important;
+                inset: 0 !important;
+                width: 100% !important;
+                height: 100% !important;
+                object-fit: cover !important;
             }
 
             #marker-status {
@@ -453,6 +464,7 @@
 
             attachRotationControls();
             window.addEventListener("resize", onWindowResize);
+            window.visualViewport?.addEventListener("resize", onWindowResize);
 
             scene.addEventListener(
                 "loaded",
