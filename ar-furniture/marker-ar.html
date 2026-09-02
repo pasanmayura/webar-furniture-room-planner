@@ -232,6 +232,19 @@
                 rotationControlsAttached = true;
             }
 
+            function onWindowResize() {
+                const camera = scene.camera;
+                const renderer = scene.renderer;
+
+                if (!camera || !renderer) {
+                    return;
+                }
+
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            }
+
 
             function createSoftShadowTexture(three) {
                 const canvas = document.createElement("canvas");
@@ -439,6 +452,7 @@
 
 
             attachRotationControls();
+            window.addEventListener("resize", onWindowResize);
 
             scene.addEventListener(
                 "loaded",
