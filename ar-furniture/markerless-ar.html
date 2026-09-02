@@ -2,46 +2,30 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0, user-scalable=no"
-  />
-
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
   <title>Markerless Furniture AR</title>
-
   <link rel="stylesheet" href="/markerless-ar.css" />
 </head>
 
 <body>
 
-  <div id="info">
-    Loading furniture model...
-  </div>
+  <div id="info"> Loading furniture model... </div>
 
-  <button id="start-ar" disabled>
-    Start AR
-  </button>
+  <button id="start-ar" disabled> Start AR </button>
 
-  <button id="exit-ar" type="button">
-    Exit AR
-  </button>
+  <button id="exit-ar" type="button"> Exit AR </button>
 
   <script type="module">
 
     import * as THREE from 'three';
 
-    import { GLTFLoader }
-      from 'three/examples/jsm/loaders/GLTFLoader.js';
+    import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
     let scene;
     let camera;
     let renderer;
-
     let controller;
-
     let reticle;
-
     let hitTestSource = null;
     let hitTestSourceRequested = false;
     let activeSession = null;
@@ -51,7 +35,6 @@
     let footprintCenter = null;
     let footprintResults = [false, false, false, false, false];
     let planeDetectionAvailable = false;
-
     let furnitureTemplate = null;
     let canPlaceFurniture = false;
     const placedFurniture = [];
@@ -115,14 +98,9 @@
       });
     }
 
-    const info =
-      document.getElementById('info');
-
-    const startButton =
-      document.getElementById('start-ar');
-
-    const exitButton =
-      document.getElementById('exit-ar');
+    const info = document.getElementById('info');
+    const startButton = document.getElementById('start-ar');
+    const exitButton = document.getElementById('exit-ar');
 
     init();
 
@@ -137,13 +115,9 @@
 
     }
 
-    // CREATE THREE.JS SCENE
-
     function createScene() {
 
       scene = new THREE.Scene();
-
-      // Camera
 
       camera =
         new THREE.PerspectiveCamera(
@@ -153,8 +127,6 @@
           0.01,
           20
         );
-
-      // Renderer
   
       renderer =
         new THREE.WebGLRenderer({
@@ -179,8 +151,6 @@
         renderer.domElement
       );
     }
-
-    // LIGHTING
  
     function createLights() {
 
@@ -211,42 +181,16 @@
       );
     }
 
-    // PLACEMENT RETICLE
-
     function createReticle() {
 
-      const geometry =
-        new THREE.RingGeometry(
-          0.08,
-          0.1,
-          32
-        );
+      const geometry = new THREE.RingGeometry(0.08, 0.1, 32);
+      geometry.rotateX(-Math.PI / 2);
+      const material = new THREE.MeshBasicMaterial({color: 0x00ff00});
+      reticle = new THREE.Mesh(geometry, material);
+      reticle.matrixAutoUpdate = false;
+      reticle.visible = false;
 
-      // Make the ring lie flat
-      geometry.rotateX(
-        -Math.PI / 2
-      );
-
-      const material =
-        new THREE.MeshBasicMaterial({
-          color: 0x00ff00
-        });
-
-      reticle =
-        new THREE.Mesh(
-          geometry,
-          material
-        );
-
-      reticle.matrixAutoUpdate =
-        false;
-
-      reticle.visible =
-        false;
-
-      scene.add(
-        reticle
-      );
+      scene.add(reticle);
       updatePlacementGuide();
 
     }
@@ -263,14 +207,8 @@
         -halfWidth, 0.01, halfDepth, -halfWidth, 0.01, -halfDepth
       ]);
 
-      guideGeometry.setAttribute(
-        'position',
-        new THREE.BufferAttribute(vertices, 3)
-      );
-      placementGuide = new THREE.LineSegments(
-        guideGeometry,
-        new THREE.LineBasicMaterial({ color: 0xff0000 })
-      );
+      guideGeometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+      placementGuide = new THREE.LineSegments(guideGeometry, new THREE.LineBasicMaterial({ color: 0xff0000 }));
       placementGuide.matrixAutoUpdate = false;
       placementGuide.visible = false;
       scene.add(placementGuide);
@@ -294,8 +232,6 @@
 
     function getFootprintOffsets() {
       const { width, depth } = getFurnitureSize();
-      // Stay slightly inside the furniture edges because floor tracking is
-      // less reliable exactly at the boundary of a detected surface.
       const halfWidth = width * 0.45;
       const halfDepth = depth * 0.45;
 
@@ -531,7 +467,6 @@
       item.boundingBox = createFurnitureBoundingBox(item.object3D.position, getFurnitureSize());
     }
 
-    // CONTROLLER
     function createController() {
 
       controller =
@@ -554,8 +489,6 @@
       );
     }
 
-    // LOAD FURNITURE
-
     function loadFurnitureModel() {
 
       const loader =
@@ -564,50 +497,22 @@
       loader.load(
         furniture.model,
 
-        // Success
-
         function (gltf) {
 
-          furnitureTemplate =
-            gltf.scene;
-
+          furnitureTemplate = gltf.scene;
           applySelectedColor(furnitureTemplate);
-
-          furnitureTemplate.scale.set(
-            0.5,
-            0.5,
-            0.5
-          );
-
-          console.log(
-            `${furniture.name} loaded successfully`
-          );
-
-          info.textContent =
-            `${furniture.name} ready - press Start AR`;
-
-          startButton.disabled =
-            false;
+          furnitureTemplate.scale.set(0.5, 0.5, 0.5);
+          console.log(`${furniture.name} loaded successfully`);
+          info.textContent = `${furniture.name} ready - press Start AR`;
+          startButton.disabled = false;
         },
-
-        // Progress
  
         function (xhr) {
 
           if (xhr.total) {
-
-            const percent =
-              Math.round(
-                xhr.loaded /
-                xhr.total *
-                100
-              );
-            info.textContent =
-              `Loading ${furniture.name}: ${percent}%`;
-          }
+            const percent = Math.round(xhr.loaded / xhr.total * 100);
+            info.textContent = `Loading ${furniture.name}: ${percent}%`;}
         },
-
-        // Error
 
         function (error) {
 
@@ -616,40 +521,22 @@
             error
           );
 
-          info.textContent =
-            `Failed to load ${furniture.name} model`;
+          info.textContent = `Failed to load ${furniture.name} model`;
         }
       );
     }
 
-    // EVENTS
-
     function setupEvents() {
 
-      startButton.addEventListener(
-        'click',
-        startAR
-      );
-
-      exitButton.addEventListener(
-        'click',
-        exitAR
-      );
-
-      window.addEventListener(
-        'resize',
-        onWindowResize
-      );
+      startButton.addEventListener('click', startAR);
+      exitButton.addEventListener('click', exitAR);
+      window.addEventListener('resize', onWindowResize);
     }
-
-    // START AR
   
     async function startAR() {
 
       if (!navigator.xr) {
-
-        info.textContent =
-          'WebXR is not supported on this device/browser.';
+        info.textContent = 'WebXR is not supported on this device/browser.';
         return;
       }
 
@@ -695,31 +582,19 @@
           session
         );
 
-        startButton.style.display =
-          'none';
+        startButton.style.display = 'none';
+        exitButton.style.display = 'block';
+        info.textContent = 'Move your phone slowly to find a surface';
 
-        exitButton.style.display =
-          'block';
-
-        info.textContent =
-          'Move your phone slowly to find a surface';
-
-        renderer.setAnimationLoop(
-          render
-        );
+        renderer.setAnimationLoop(render);
 
         session.addEventListener(
           'end',
           function () {
 
             renderer.setAnimationLoop(null);
-
-            hitTestSource =
-              null;
-
-            hitTestSourceRequested =
-              false;
-
+            hitTestSource = null;
+            hitTestSourceRequested = false;
             footprintHitTestSources.forEach((source) => source.cancel());
             footprintHitTestSources = [];
             footprintHitTestSourcePromise = null;
@@ -733,32 +608,18 @@
             reticle.visible = false;
             placementGuide.visible = false;
 
-            startButton.style.display =
-              'block';
-
-            exitButton.style.display =
-              'none';
-
-            info.textContent =
-              'AR session ended';
-
+            startButton.style.display = 'block';
+            exitButton.style.display = 'none';
+            info.textContent = 'AR session ended';
           }
         );
       }
       catch (error) {
 
         activeSession = null;
-        exitButton.style.display =
-          'none';
-
-        console.error(
-          'AR session error:',
-          error
-        );
-
-        info.textContent =
-          'Could not start AR session.';
-
+        exitButton.style.display = 'none';
+        console.error('AR session error:', error);
+        info.textContent = 'Could not start AR session.';
       }
     }
 
@@ -768,64 +629,34 @@
       }
     }
 
-    // PLACE FURNITURE
-
     function placeNewFurniture() {
 
       if (!reticle.visible) {
 
-        info.textContent =
-          'No surface found yet';
-
+        info.textContent = 'No surface found yet';
         return;
       }
 
       if (!canPlaceFurniture) {
 
-        info.textContent =
-          'Not enough space for this furniture';
-
+        info.textContent = 'Not enough space for this furniture';
         return;
       }
 
       if (!furnitureTemplate) {
 
-        info.textContent =
-          `${furniture.name} is still loading`;
-
+        info.textContent = `${furniture.name} is still loading`;
         return;
       }
 
-      // Clone the loaded model
-      const placedObject =
-        furnitureTemplate.clone(true);
+      const placedObject = furnitureTemplate.clone(true);
+      const position = new THREE.Vector3();
+      position.setFromMatrixPosition(reticle.matrix);
+      placedObject.position.copy(position);
+      placedObject.position.y += 0.01;
+      placedObject.scale.set( 0.5, 0.5, 0.5);
 
-      // Get reticle position
-
-      const position =
-        new THREE.Vector3();
-
-
-      position.setFromMatrixPosition(
-        reticle.matrix
-      );
-
-      placedObject.position.copy(
-        position
-      );
-
-      placedObject.position.y +=
-        0.01;
-
-      placedObject.scale.set(
-        0.5,
-        0.5,
-        0.5
-      );
-
-      scene.add(
-        placedObject
-      );
+      scene.add(placedObject);
 
       const placedItem = {
         type: furniture.name,
@@ -837,102 +668,50 @@
       placedFurniture.push(placedItem);
       updateFurnitureBoundingBox(placedItem);
 
-      console.log(
-        `${furniture.name} placed:`,
-        placedObject.position
-      );
-
-      info.textContent =
-        `${furniture.name} placed successfully`;
-
+      console.log(`${furniture.name} placed:`, placedObject.position);
+      info.textContent = `${furniture.name} placed successfully`;
     }
 
-    // HIT TEST / RENDER LOOP
-
-    function render(
-      timestamp,
-      frame
-    ) {
+    function render(timestamp, frame) {
 
       if (frame) {
-        const referenceSpace =
-          renderer.xr.getReferenceSpace();
+        const referenceSpace = renderer.xr.getReferenceSpace();
+        const session = renderer.xr.getSession();
 
-        const session =
-          renderer.xr.getSession();
-
-          // Request hit test source
-
-        if (
-          hitTestSourceRequested ===
-          false
-        ) {
+        if (hitTestSourceRequested === false) {
 
           session
-            .requestReferenceSpace(
-              'viewer'
-            )
-            .then(
-              function (
-                viewerReferenceSpace
-              ) {
-
+            .requestReferenceSpace('viewer')
+            .then(function (viewerReferenceSpace) {
                 session
-                  .requestHitTestSource({
-                    space:
-                      viewerReferenceSpace
-                  })
-                  .then(
-                    function (source) {
-
-                      hitTestSource =
-                        source;
-
+                  .requestHitTestSource({space:viewerReferenceSpace})
+                  .then(function (source) {
+                      hitTestSource = source;
                     }
                   );
               }
             );
 
-          hitTestSourceRequested =
-            true;
+          hitTestSourceRequested = true;
         }
-
-        // Hit test
   
         if (hitTestSource) {
 
-          const hitTestResults =
-            frame.getHitTestResults(
-              hitTestSource
-            );
+          const hitTestResults = frame.getHitTestResults(hitTestSource);
 
-          if (
-            hitTestResults.length >
-            0
-          ) {
+          if (hitTestResults.length > 0) {
 
-            const hit =
-              hitTestResults[0];
-
-            const pose =
-              hit.getPose(
-                referenceSpace
-              );
+            const hit = hitTestResults[0];
+            const pose = hit.getPose(referenceSpace);
 
             if (pose) {
-              reticle.visible =
-                true;
+              reticle.visible = true;
 
-              reticle.matrix.fromArray(
-                pose.transform.matrix
-              );
+              reticle.matrix.fromArray(pose.transform.matrix);
 
               const placementPosition = new THREE.Vector3();
               placementPosition.setFromMatrixPosition(reticle.matrix);
-              if (
-                !footprintCenter ||
-                footprintCenter.distanceTo(placementPosition) > 0.15
-              ) {
+              if ( !footprintCenter || footprintCenter.distanceTo(placementPosition) > 0.15 ) {
                 footprintHitTestSources.forEach((source) => source.cancel());
                 footprintHitTestSources = [];
                 footprintResults = [false, false, false, false, false];
@@ -959,18 +738,14 @@
           }
           else {
 
-            reticle.visible =
-              false;
-
-            canPlaceFurniture =
-              false;
+            reticle.visible = false;
+            canPlaceFurniture = false;
 
             if (placementGuide) {
               placementGuide.visible = false;
             }
 
-            info.textContent =
-              'Move your phone slowly to find a surface';
+            info.textContent = 'Move your phone slowly to find a surface';
           }
         }
       }
@@ -981,7 +756,6 @@
       );
     }
 
-    // RESIZE
     function onWindowResize() {
 
       camera.aspect =
