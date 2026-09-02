@@ -44,26 +44,11 @@
                 text-align: center;
             }
 
-            #exit-preview {
-                display: none;
-                position: fixed;
-                z-index: 20;
-                top: 1rem;
-                right: 1rem;
-                padding: 0.75rem 1rem;
-                border: 0;
-                border-radius: 0.5rem;
-                background: #d94b4b;
-                color: #ffffff;
-                font: 600 0.95rem/1.2 Arial, sans-serif;
-                cursor: pointer;
-            }
         </style>
     </head>
 
     <body>
     <p id="marker-status">Point your camera at the furniture marker.</p>
-    <button id="exit-preview" type="button">Exit Preview</button>
 
         <a-scene
             id="marker-scene"
@@ -116,8 +101,6 @@
             const model = document.getElementById("furniture-model");
             const target = document.getElementById("furniture-target");
             const status = document.getElementById("marker-status");
-            const exitPreviewButton = document.getElementById("exit-preview");
-
             let interactionCanvas = document.querySelector("canvas.a-canvas");
             let threeShadow = null;
             let modelReady = false;
@@ -249,13 +232,6 @@
                 rotationControlsAttached = true;
             }
 
-            function exitPreview() {
-                const mindarController = scene.systems["mindar-image-system"]?.controller;
-                mindarController?.stop();
-                model.setAttribute("visible", "false");
-                exitPreviewButton.style.display = "none";
-                status.textContent = "Preview ended.";
-            }
 
             function createSoftShadowTexture(three) {
                 const canvas = document.createElement("canvas");
@@ -453,8 +429,6 @@
             target.addEventListener("targetFound", () => {
                 status.textContent =
                     `${furniture.name} detected.`;
-                exitPreviewButton.style.display = "block";
-
                 playMarkerDetectedSound();
             });
 
@@ -463,7 +437,6 @@
                     "Point your camera at the furniture marker.";
             });
 
-            exitPreviewButton.addEventListener("click", exitPreview);
 
             attachRotationControls();
 
@@ -471,7 +444,6 @@
                 "loaded",
                 () => {
                     attachRotationControls();
-                    exitPreviewButton.style.display = "block";
                 },
                 { once: true }
             );
