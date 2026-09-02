@@ -193,6 +193,7 @@ function showProductDetails(productId) {
   document.getElementById("viewInRoomBtn").addEventListener("click", () => {
     const markerlessPageUrl = new URL("/markerless-ar.html", window.location.origin);
     markerlessPageUrl.searchParams.set("product", selectedProduct.id);
+    markerlessPageUrl.searchParams.set("color", selectedColor);
     window.location.href = markerlessPageUrl;
   });
 

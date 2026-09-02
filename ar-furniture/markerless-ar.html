@@ -80,6 +80,7 @@
     };
 
     const productId = new URLSearchParams(window.location.search).get('product');
+    const selectedColor = new URLSearchParams(window.location.search).get('color');
     const furniture = furnitureOptions[productId] || furnitureOptions.chair;
 
     const furnitureSizes = {
@@ -90,6 +91,28 @@
 
     function getFurnitureSize() {
       return furnitureSizes[productId] || furnitureSizes.chair;
+    }
+
+    function applySelectedColor(model) {
+      if (!selectedColor || !/^#[0-9a-f]{6}$/i.test(selectedColor)) {
+        return;
+      }
+
+      model.traverse((node) => {
+        if (!node.isMesh || !node.material) {
+          return;
+        }
+
+        const materials = Array.isArray(node.material)
+          ? node.material
+          : [node.material];
+
+        materials.forEach((material) => {
+          if (material.color) {
+            material.color.set(selectedColor);
+          }
+        });
+      });
     }
 
     const info =
@@ -547,6 +570,8 @@
 
           furnitureTemplate =
             gltf.scene;
+
+          applySelectedColor(furnitureTemplate);
 
           furnitureTemplate.scale.set(
             0.5,
