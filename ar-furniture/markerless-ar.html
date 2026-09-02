@@ -142,6 +142,8 @@
       );
 
       renderer.xr.enabled = true;
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
       // Better color handling
       renderer.outputColorSpace =
@@ -176,8 +178,59 @@
         3,
         2
       );
+      directionalLight.castShadow = true;
       scene.add(
         directionalLight
+      );
+    }
+
+    function createSoftShadowTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 256;
+      canvas.height = 256;
+
+      const context = canvas.getContext('2d');
+      const gradient = context.createRadialGradient(128, 128, 8, 128, 128, 118);
+      gradient.addColorStop(0, 'rgba(0, 0, 0, 0.42)');
+      gradient.addColorStop(0.45, 'rgba(0, 0, 0, 0.20)');
+      gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      context.fillStyle = gradient;
+      context.fillRect(0, 0, 256, 256);
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      return texture;
+    }
+
+    function createFurnitureShadow(position, size) {
+      const shadowSize = Math.max(size.width, size.depth, 0.18) * 1.35;
+      const shadow = new THREE.Mesh(
+        new THREE.PlaneGeometry(shadowSize, shadowSize),
+        new THREE.MeshBasicMaterial({
+          map: createSoftShadowTexture(),
+          transparent: true,
+          depthWrite: false,
+          polygonOffset: true,
+          polygonOffsetFactor: -2
+        })
+      );
+
+      shadow.rotation.x = -Math.PI / 2;
+      shadow.position.set(position.x, position.y + 0.003, position.z);
+      shadow.renderOrder = 1;
+      scene.add(shadow);
+      return shadow;
+    }
+
+    function updateFurnitureShadow(item) {
+      if (!item.shadow) {
+        return;
+      }
+
+      item.shadow.position.set(
+        item.object3D.position.x,
+        item.object3D.position.y + 0.003,
+        item.object3D.position.z
       );
     }
 
@@ -608,6 +661,13 @@
             reticle.visible = false;
             placementGuide.visible = false;
 
+            placedFurniture.forEach((item) => {
+              if (item.shadow) {
+                scene.remove(item.shadow);
+              }
+            });
+            placedFurniture.length = 0;
+
             startButton.style.display = 'block';
             exitButton.style.display = 'none';
             info.textContent = 'AR session ended';
@@ -650,6 +710,12 @@
       }
 
       const placedObject = furnitureTemplate.clone(true);
+      placedObject.traverse((node) => {
+        if (node.isMesh) {
+          node.castShadow = true;
+          node.receiveShadow = true;
+        }
+      });
       const position = new THREE.Vector3();
       position.setFromMatrixPosition(reticle.matrix);
       placedObject.position.copy(position);
@@ -658,12 +724,16 @@
 
       scene.add(placedObject);
 
+      const size = getFurnitureSize();
+      const shadow = createFurnitureShadow(placedObject.position, size);
+
       const placedItem = {
         type: furniture.name,
         object3D: placedObject,
-        width: getFurnitureSize().width,
-        depth: getFurnitureSize().depth,
-        boundingBox: createFurnitureBoundingBox(placedObject.position, getFurnitureSize())
+        width: size.width,
+        depth: size.depth,
+        shadow,
+        boundingBox: createFurnitureBoundingBox(placedObject.position, size)
       };
       placedFurniture.push(placedItem);
       updateFurnitureBoundingBox(placedItem);
@@ -729,6 +799,7 @@
                 );
                 const controllerRotationChange = controllerEuler.y - dragStartControllerYaw;
                 selectedFurniture.object3D.rotation.y = dragStartRotation.y + controllerRotationChange;
+                updateFurnitureShadow(selectedFurniture);
                 updateFurnitureBoundingBox(selectedFurniture);
                 validatePlacement(placementPosition, hasEnoughFloor, selectedFurniture);
               } else {
