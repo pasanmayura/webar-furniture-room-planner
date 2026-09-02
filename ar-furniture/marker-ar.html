@@ -12,32 +12,21 @@
             body {
                 margin: 0;
                 overflow: hidden;
-                width: 100%;
-                height: 100%;
-                height: 100dvh;
-                background: #000;
+                width: 100vw;
+                height: 100vh;
             }
 
             a-scene {
                 position: fixed;
                 inset: 0;
-                width: 100%;
-                height: 100%;
-                height: 100dvh;
+                width: 100vw;
+                height: 100vh;
             }
 
             canvas.a-canvas {
                 width: 100% !important;
                 height: 100% !important;
                 touch-action: none;
-            }
-
-            video.mindar-video {
-                position: fixed !important;
-                inset: 0 !important;
-                width: 100% !important;
-                height: 100% !important;
-                object-fit: cover !important;
             }
 
             #marker-status {
@@ -243,20 +232,6 @@
                 rotationControlsAttached = true;
             }
 
-            function onWindowResize() {
-                const camera = scene.camera;
-                const renderer = scene.renderer;
-
-                if (!camera || !renderer) {
-                    return;
-                }
-
-                camera.aspect = window.innerWidth / window.innerHeight;
-                camera.updateProjectionMatrix();
-                renderer.setSize(window.innerWidth, window.innerHeight);
-            }
-
-
             function createSoftShadowTexture(three) {
                 const canvas = document.createElement("canvas");
 
@@ -381,19 +356,14 @@
 
             document.title = `${furniture.name} - Marker AR`;
 
-            scene.setAttribute(
-                "mindar-image",
-                `imageTargetSrc: ${furniture.marker}; autoStart: true; uiScanning: yes; uiLoading: yes;`
-            );
-
+            scene.setAttribute("mindar-image", `imageTargetSrc: ${furniture.marker}; autoStart: true; uiScanning: yes; uiLoading: yes;`);
             model.setAttribute("gltf-model", furniture.model);
 
             model.addEventListener("model-loaded", (event) => {
                 const threeModel = event.detail.model;
 
                 if (!threeModel) {
-                    status.textContent =
-                        `Unable to load the ${furniture.name.toLowerCase()} model.`;
+                    status.textContent = `Unable to load the ${furniture.name.toLowerCase()} model.`;
                     return;
                 }
 
@@ -431,40 +401,27 @@
                 }
 
                 threeModel.updateMatrixWorld(true);
-
-                setupThreeLighting(
-                    threeModel,
-                    three
-                );
-
+                setupThreeLighting(threeModel, three);
                 model.setAttribute("visible", "true");
-
                 modelReady = true;
 
-                status.textContent =
-                    `${furniture.name} ready. Point your camera at the marker.`;
+                status.textContent =`${furniture.name} ready. Point your camera at the marker.`;
             });
 
             model.addEventListener("model-error", () => {
-                status.textContent =
-                    `Unable to load the ${furniture.name.toLowerCase()} model.`;
+                status.textContent = `Unable to load the ${furniture.name.toLowerCase()} model.`;
             });
 
             target.addEventListener("targetFound", () => {
-                status.textContent =
-                    `${furniture.name} detected.`;
+                status.textContent = `${furniture.name} detected.`;
                 playMarkerDetectedSound();
             });
 
             target.addEventListener("targetLost", () => {
-                status.textContent =
-                    "Point your camera at the furniture marker.";
+                status.textContent = "Point your camera at the furniture marker.";
             });
 
-
             attachRotationControls();
-            window.addEventListener("resize", onWindowResize);
-            window.visualViewport?.addEventListener("resize", onWindowResize);
 
             scene.addEventListener(
                 "loaded",
