@@ -2,12 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0"
-    >
-
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Furniture Marker AR</title>
 
     <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
@@ -42,23 +37,17 @@
             right: 1rem;
             margin: 0;
             padding: 0.75rem 1rem;
-            color: #ffffff;
+            color: #fff;
             background: rgba(35, 38, 31, 0.78);
             border-radius: 0.5rem;
-            font:
-                500 0.95rem/1.4
-                Arial,
-                sans-serif;
+            font: 500 0.95rem/1.4 Arial, sans-serif;
             text-align: center;
         }
     </style>
 </head>
 
 <body>
-
-<p id="marker-status">
-    Point your camera at the furniture marker.
-</p>
+<p id="marker-status">Point your camera at the furniture marker.</p>
 
 <a-scene
     id="marker-scene"
@@ -69,857 +58,394 @@
     renderer="colorManagement: true; antialias: true"
     shadow="type: pcfsoft"
 >
-
-    <a-entity
-        id="furniture-target"
-        mindar-image-target="targetIndex: 0"
-    >
+    <a-entity id="furniture-target" mindar-image-target="targetIndex: 0">
         <a-gltf-model
             id="furniture-model"
             position="0 0 0"
             rotation="0 0 0"
             scale="1 1 1"
             visible="false"
-            shadow="cast: true;receive: true"
-        >
-        </a-gltf-model>
-
+            shadow="cast: true; receive: true"
+        ></a-gltf-model>
     </a-entity>
 
-    <a-camera
-        position="0 0 0"
-        look-controls="enabled: false"
-    >
-    </a-camera>
-
+    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 </a-scene>
 
 <script>
     const furnitureOptions = {
-
         chair: {
-            name:"Modern Lounge Chair",
-            model:"/models/chair.glb",
-            marker:"/markers/chair-target.mind"
+            name: "Modern Lounge Chair",
+            model: "/models/chair.glb",
+            marker: "/markers/chair-target.mind"
         },
-
         table: {
-            name:"Modern Dining Table",
-            model:"/models/table.glb",
-
-            marker:
-                "/markers/table-target.mind"
+            name: "Modern Dining Table",
+            model: "/models/table.glb",
+            marker: "/markers/table-target.mind"
         },
-
         bed: {
-            name:
-                "Modern Double Bed",
-
-            model:
-                "/models/bed.glb",
-
-            marker:
-                "/markers/bed-target.mind"
+            name: "Modern Double Bed",
+            model: "/models/bed.glb",
+            marker: "/markers/bed-target.mind"
         }
-
     };
 
-    const params =
-        new URLSearchParams(
-            window.location.search
-        );
+    const params = new URLSearchParams(window.location.search);
+    const productId = params.get("product");
+    const selectedColor = params.get("color");
+    const furniture = furnitureOptions[productId] || furnitureOptions.chair;
 
-    const productId =
-        params.get("product");
+    const scene = document.getElementById("marker-scene");
+    const model = document.getElementById("furniture-model");
+    const target = document.getElementById("furniture-target");
+    const status = document.getElementById("marker-status");
 
-    const selectedColor =
-        params.get("color");
-
-    const furniture =
-        furnitureOptions[productId] ||
-        furnitureOptions.chair;
-
-    const scene =
-        document.getElementById(
-            "marker-scene"
-        );
-
-    const model =
-        document.getElementById(
-            "furniture-model"
-        );
-
-    const target =
-        document.getElementById(
-            "furniture-target"
-        );
-
-    const status =
-        document.getElementById(
-            "marker-status"
-        );
-
-    let interactionCanvas =
-        document.querySelector(
-            "canvas.a-canvas"
-        );
-
+    let interactionCanvas = document.querySelector("canvas.a-canvas");
     let threeShadow = null;
-
     let modelReady = false;
-
     let userIsRotating = false;
-
     let previousPointerX = 0;
-
     let previousPointerY = 0;
-
-    let rotationFrame;
-
-    let rotationControlsAttached =
-        false;
-
+    let rotationControlsAttached = false;
     let audioContext = null;
-
     let lastMarkerSoundTime = 0;
 
     const MODEL_FIT_SIZE = 0.3;
 
     function playMarkerDetectedSound() {
+        const now = performance.now();
 
-        const now =
-            performance.now();
-
-        if (
-            now -
-            lastMarkerSoundTime <
-            900
-        ) {
+        if (now - lastMarkerSoundTime < 900) {
             return;
         }
 
-        lastMarkerSoundTime =
-            now;
+        lastMarkerSoundTime = now;
 
-        const AudioContextClass =
-            window.AudioContext ||
-            window.webkitAudioContext;
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
 
         if (!AudioContextClass) {
             return;
         }
 
         if (!audioContext) {
-
-            audioContext =
-                new AudioContextClass();
-
+            audioContext = new AudioContextClass();
         }
 
-        if (
-            audioContext.state ===
-            "suspended"
-        ) {
-
+        if (audioContext.state === "suspended") {
             audioContext.resume();
-
         }
 
-        const oscillator =
-            audioContext
-                .createOscillator();
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
 
-        const gainNode =
-            audioContext
-                .createGain();
-
-        oscillator.type =
-            "triangle";
-
-        oscillator.frequency
-            .setValueAtTime(
-                720,
-                audioContext.currentTime
-            );
-
-        oscillator.frequency
-            .exponentialRampToValueAtTime(
-                980,
-                audioContext.currentTime +
-                0.12
-            );
-
-        gainNode.gain
-            .setValueAtTime(
-                0.0001,
-                audioContext.currentTime
-            );
-
-        gainNode.gain
-            .exponentialRampToValueAtTime(
-                0.18,
-                audioContext.currentTime +
-                0.02
-            );
-
-        gainNode.gain
-            .exponentialRampToValueAtTime(
-                0.0001,
-                audioContext.currentTime +
-                0.36
-            );
-
-        oscillator.connect(
-            gainNode
+        oscillator.type = "triangle";
+        oscillator.frequency.setValueAtTime(720, audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(
+            980,
+            audioContext.currentTime + 0.12
         );
 
-        gainNode.connect(
-            audioContext.destination
+        gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(
+            0.18,
+            audioContext.currentTime + 0.02
+        );
+        gainNode.gain.exponentialRampToValueAtTime(
+            0.0001,
+            audioContext.currentTime + 0.36
         );
 
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
         oscillator.start();
-
-        oscillator.stop(
-            audioContext.currentTime +
-            0.38
-        );
-
+        oscillator.stop(audioContext.currentTime + 0.38);
     }
 
     function rotateModelAutomatically() {
-
-        if (
-            modelReady &&
-            !userIsRotating &&
-            model.object3D.visible
-        ) {
-
-            model.object3D
-                .rotation.y += 0.01;
-
+        if (modelReady && !userIsRotating && model.object3D.visible) {
+            model.object3D.rotation.y += 0.01;
         }
 
-        rotationFrame =
-            requestAnimationFrame(
-                rotateModelAutomatically
-            );
-
+        requestAnimationFrame(rotateModelAutomatically);
     }
 
-    function startUserRotation(
-        event
-    ) {
-
+    function startUserRotation(event) {
         if (!modelReady) {
             return;
         }
 
         userIsRotating = true;
-
-        previousPointerX =
-            event.clientX;
-
-        previousPointerY =
-            event.clientY;
-
-        interactionCanvas
-            ?.setPointerCapture(
-                event.pointerId
-            );
-
+        previousPointerX = event.clientX;
+        previousPointerY = event.clientY;
+        interactionCanvas?.setPointerCapture(event.pointerId);
     }
 
-    function continueUserRotation(
-        event
-    ) {
-
+    function continueUserRotation(event) {
         if (!userIsRotating) {
             return;
         }
 
-        const horizontalChange =
-            event.clientX -
-            previousPointerX;
+        const horizontalChange = event.clientX - previousPointerX;
+        const verticalChange = event.clientY - previousPointerY;
 
-        const verticalChange =
-            event.clientY -
-            previousPointerY;
+        model.object3D.rotation.y += horizontalChange * 0.01;
+        model.object3D.rotation.x = Math.max(
+            -0.35,
+            Math.min(
+                0.35,
+                model.object3D.rotation.x + verticalChange * 0.005
+            )
+        );
 
-        model.object3D
-            .rotation.y +=
-            horizontalChange * 0.01;
-
-        model.object3D
-            .rotation.x =
-            Math.max(
-                -0.35,
-
-                Math.min(
-                    0.35,
-
-                    model.object3D
-                        .rotation.x +
-                    verticalChange *
-                    0.005
-                )
-            );
-
-        previousPointerX =
-            event.clientX;
-
-        previousPointerY =
-            event.clientY;
-
+        previousPointerX = event.clientX;
+        previousPointerY = event.clientY;
     }
 
-    function stopUserRotation(
-        event
-    ) {
-
+    function stopUserRotation(event) {
         userIsRotating = false;
 
         if (
-            event?.pointerId !==
-            undefined &&
-
-            interactionCanvas
-                ?.hasPointerCapture(
-                    event.pointerId
-                )
+            event?.pointerId !== undefined &&
+            interactionCanvas?.hasPointerCapture(event.pointerId)
         ) {
-
-            interactionCanvas
-                .releasePointerCapture(
-                    event.pointerId
-                );
-
+            interactionCanvas.releasePointerCapture(event.pointerId);
         }
-
     }
 
     function attachRotationControls() {
-
         if (!interactionCanvas) {
-
             interactionCanvas =
                 scene.canvas ||
-                scene.querySelector(
-                    "canvas.a-canvas"
-                );
-
+                scene.querySelector("canvas.a-canvas");
         }
 
-        if (
-            !interactionCanvas ||
-            rotationControlsAttached
-        ) {
+        if (!interactionCanvas || rotationControlsAttached) {
             return;
         }
 
-        interactionCanvas
-            .addEventListener(
-                "pointerdown",
-                startUserRotation
-            );
+        interactionCanvas.addEventListener("pointerdown", startUserRotation);
+        interactionCanvas.addEventListener("pointermove", continueUserRotation);
+        interactionCanvas.addEventListener("pointerup", stopUserRotation);
+        interactionCanvas.addEventListener("pointercancel", stopUserRotation);
 
-        interactionCanvas
-            .addEventListener(
-                "pointermove",
-                continueUserRotation
-            );
-
-        interactionCanvas
-            .addEventListener(
-                "pointerup",
-                stopUserRotation
-            );
-
-        interactionCanvas
-            .addEventListener(
-                "pointercancel",
-                stopUserRotation
-            );
-
-        rotationControlsAttached =
-            true;
-
+        rotationControlsAttached = true;
     }
 
-    function createSoftShadowTexture(
-        three
-    ) {
-
-        const canvas =
-            document.createElement(
-                "canvas"
-            );
+    function createSoftShadowTexture(three) {
+        const canvas = document.createElement("canvas");
 
         canvas.width = 256;
         canvas.height = 256;
 
-        const context =
-            canvas.getContext(
-                "2d"
-            );
-
-        const gradient =
-            context
-                .createRadialGradient(
-                    128,
-                    128,
-                    8,
-
-                    128,
-                    128,
-                    118
-                );
-
-        gradient.addColorStop(
-            0,
-            "rgba(0, 0, 0, 0.42)"
+        const context = canvas.getContext("2d");
+        const gradient = context.createRadialGradient(
+            128,
+            128,
+            8,
+            128,
+            128,
+            118
         );
 
-        gradient.addColorStop(
-            0.45,
-            "rgba(0, 0, 0, 0.22)"
-        );
+        gradient.addColorStop(0, "rgba(0, 0, 0, 0.42)");
+        gradient.addColorStop(0.45, "rgba(0, 0, 0, 0.22)");
+        gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
 
-        gradient.addColorStop(
-            1,
-            "rgba(0, 0, 0, 0)"
-        );
+        context.fillStyle = gradient;
+        context.fillRect(0, 0, 256, 256);
 
-        context.fillStyle =
-            gradient;
-
-        context.fillRect(
-            0,
-            0,
-            256,
-            256
-        );
-
-        const texture =
-            new three.CanvasTexture(
-                canvas
-            );
-
-        texture.colorSpace =
-            three.SRGBColorSpace;
+        const texture = new three.CanvasTexture(canvas);
+        texture.colorSpace = three.SRGBColorSpace;
 
         return texture;
-
     }
 
-    function setupThreeLighting(
-        threeModel,
-        three
-    ) {
+    function setupThreeLighting(threeModel, three) {
+        threeModel.updateMatrixWorld(true);
 
-        threeModel
-            .updateMatrixWorld(
-                true
-            );
+        const renderer = scene.renderer;
 
-        const renderer =
-            scene.renderer;
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = three.PCFSoftShadowMap;
 
-        renderer.shadowMap.enabled =
-            true;
+        const keyLight = new three.DirectionalLight(0xffffff, 1.8);
 
-        renderer.shadowMap.type =
-            three.PCFSoftShadowMap;
+        keyLight.position.set(1, 3, 2);
+        keyLight.castShadow = true;
+        keyLight.shadow.mapSize.set(1024, 1024);
+        keyLight.shadow.camera.near = 0.01;
+        keyLight.shadow.camera.far = 8;
+        keyLight.shadow.camera.left = -2;
+        keyLight.shadow.camera.right = 2;
+        keyLight.shadow.camera.top = 2;
+        keyLight.shadow.camera.bottom = -2;
 
-        const keyLight =
-            new three.DirectionalLight(
-                0xffffff,
-                1.8
-            );
+        scene.object3D.add(keyLight);
 
-        keyLight.position.set(
-            1,
-            3,
-            2
+        const fillLight = new three.HemisphereLight(
+            0xffffff,
+            0x444444,
+            1.4
         );
 
-        keyLight.castShadow =
-            true;
+        scene.object3D.add(fillLight);
 
-        keyLight.shadow.mapSize.set(
-            1024,
-            1024
-        );
-
-        keyLight.shadow.camera.near =
-            0.01;
-
-        keyLight.shadow.camera.far =
-            8;
-
-        keyLight.shadow.camera.left =
-            -2;
-
-        keyLight.shadow.camera.right =
-            2;
-
-        keyLight.shadow.camera.top =
-            2;
-
-        keyLight.shadow.camera.bottom =
-            -2;
-
-        scene.object3D.add(
-            keyLight
-        );
-
-        const fillLight =
-            new three.HemisphereLight(
-                0xffffff,
-                0x444444,
-                1.4
-            );
-
-        scene.object3D.add(
-            fillLight
-        );
-
-        threeModel.traverse(
-            (node) => {
-
-                if (node.isMesh) {
-
-                    node.castShadow =
-                        true;
-
-                    node.receiveShadow =
-                        true;
-
-                }
-
+        threeModel.traverse((node) => {
+            if (node.isMesh) {
+                node.castShadow = true;
+                node.receiveShadow = true;
             }
+        });
+
+        threeModel.updateMatrixWorld(true);
+
+        const bounds = new three.Box3().setFromObject(threeModel);
+        const size = bounds.getSize(new three.Vector3());
+        const shadowSize = Math.max(size.x, size.z, 0.18) * 1.5;
+
+        const shadowMaterial = new three.MeshBasicMaterial({
+            map: createSoftShadowTexture(three),
+            transparent: true,
+            depthWrite: false,
+            polygonOffset: true,
+            polygonOffsetFactor: -2
+        });
+
+        const shadowGeometry = new three.PlaneGeometry(
+            shadowSize,
+            shadowSize
         );
 
-        threeModel
-            .updateMatrixWorld(
-                true
-            );
-
-        const bounds =
-            new three.Box3()
-                .setFromObject(
-                    threeModel
-                );
-
-        const size =
-            bounds.getSize(
-                new three.Vector3()
-            );
-
-        const shadowSize =
-            Math.max(
-                size.x,
-                size.z,
-                0.18
-            ) * 1.5;
-
-        const shadowMaterial =
-            new three.MeshBasicMaterial({
-
-                map:
-                    createSoftShadowTexture(
-                        three
-                    ),
-
-                transparent: true,
-
-                depthWrite: false,
-
-                polygonOffset: true,
-
-                polygonOffsetFactor:
-                    -2
-
-            });
-
-        const shadowGeometry =
-            new three.PlaneGeometry(
-                shadowSize,
-                shadowSize
-            );
-
-        threeShadow =
-            new three.Mesh(
-                shadowGeometry,
-                shadowMaterial
-            );
-
-        threeShadow.rotation.x =
-            -Math.PI / 2;
-
-        threeShadow.position.set(
-            0,
-            0.002,
-            0
+        threeShadow = new three.Mesh(
+            shadowGeometry,
+            shadowMaterial
         );
 
-        threeShadow.renderOrder =
-            1;
+        threeShadow.rotation.x = -Math.PI / 2;
+        threeShadow.position.set(0, 0.002, 0);
+        threeShadow.renderOrder = 1;
 
-        target.object3D.add(
-            threeShadow
-        );
-
+        target.object3D.add(threeShadow);
     }
 
-    function applySelectedColor(
-        threeModel
-    ) {
-
+    function applySelectedColor(threeModel) {
         if (
             !selectedColor ||
-
-            !/^#[0-9a-f]{6}$/i
-                .test(
-                    selectedColor
-                )
+            !/^#[0-9a-f]{6}$/i.test(selectedColor)
         ) {
             return;
         }
 
-        threeModel.traverse(
-            (node) => {
-
-                if (
-                    !node.isMesh ||
-                    !node.material
-                ) {
-                    return;
-                }
-
-                const materials =
-                    Array.isArray(
-                        node.material
-                    )
-
-                    ? node.material
-
-                    : [
-                        node.material
-                    ];
-
-                materials.forEach(
-                    (material) => {
-
-                        if (
-                            material.color
-                        ) {
-
-                            material.color
-                                .set(
-                                    selectedColor
-                                );
-
-                        }
-
-                    }
-                );
-
+        threeModel.traverse((node) => {
+            if (!node.isMesh || !node.material) {
+                return;
             }
-        );
 
+            const materials = Array.isArray(node.material)
+                ? node.material
+                : [node.material];
+
+            materials.forEach((material) => {
+                if (material.color) {
+                    material.color.set(selectedColor);
+                }
+            });
+        });
     }
 
-    document.title =
-        `${furniture.name} - Marker AR`;
+    document.title = `${furniture.name} - Marker AR`;
 
     scene.setAttribute(
-
         "mindar-image",
-
-        `
-            imageTargetSrc:
-            ${furniture.marker};
-
-            autoStart: true;
-
-            uiScanning: yes;
-
-            uiLoading: yes;
-        `
-
+        `imageTargetSrc: ${furniture.marker}; autoStart: true; uiScanning: yes; uiLoading: yes;`
     );
 
-    model.setAttribute(
-        "gltf-model",
-        furniture.model
-    );
+    model.setAttribute("gltf-model", furniture.model);
 
-    model.addEventListener(
-        "model-loaded",
-        (event) => {
+    model.addEventListener("model-loaded", (event) => {
+        const threeModel = event.detail.model;
 
-            const threeModel =
-                event.detail.model;
-
-            if (!threeModel) {
-
-                status.textContent =
-                    `Unable to load the ${furniture.name.toLowerCase()} model.`;
-
-                return;
-
-            }
-
-            const three =
-                AFRAME.THREE;
-
-            threeModel
-                .updateMatrixWorld(
-                    true
-                );
-
-            applySelectedColor(
-                threeModel
-            );
-
-            const bounds =
-                new three.Box3()
-                    .setFromObject(
-                        threeModel
-                    );
-
-            const size =
-                bounds.getSize(
-                    new three.Vector3()
-                );
-
-            const center =
-                bounds.getCenter(
-                    new three.Vector3()
-                );
-
-            const boundsAreValid =
-
-                isFinite(size.x) &&
-
-                isFinite(size.y) &&
-
-                isFinite(size.z) &&
-
-                !(
-                    size.x === 0 &&
-                    size.y === 0 &&
-                    size.z === 0
-                );
-
-            if (boundsAreValid) {
-
-                const maxDimension =
-                    Math.max(
-                        size.x,
-                        size.y,
-                        size.z,
-                        0.001
-                    );
-
-                threeModel
-                    .position
-                    .sub(
-                        center
-                    );
-
-                threeModel
-                    .scale
-                    .setScalar(
-                        MODEL_FIT_SIZE /
-                        maxDimension
-                    );
-
-                model.setAttribute(
-                    "position",
-                    "0 0 0"
-                );
-
-            }
-
-            else {
-
-                model.setAttribute(
-                    "scale",
-                    "1 1 1"
-                );
-
-            }
-
-            threeModel
-                .updateMatrixWorld(
-                    true
-                );
-
-            setupThreeLighting(
-                threeModel,
-                three
-            );
-
-            model.setAttribute(
-                "visible",
-                "true"
-            );
-
-            modelReady =
-                true;
-
-            status.textContent =
-                `${furniture.name} ready. Point your camera at the marker.`;
-
-        }
-
-    );
-
-    model.addEventListener(
-        "model-error",
-        () => {
-
+        if (!threeModel) {
             status.textContent =
                 `Unable to load the ${furniture.name.toLowerCase()} model.`;
-
+            return;
         }
-    );
 
-    target.addEventListener(
-        "targetFound",
-        () => {
+        const three = AFRAME.THREE;
 
-            status.textContent =
-                `${furniture.name} detected.`;
+        threeModel.updateMatrixWorld(true);
+        applySelectedColor(threeModel);
 
-            playMarkerDetectedSound();
+        const bounds = new three.Box3().setFromObject(threeModel);
+        const size = bounds.getSize(new three.Vector3());
+        const center = bounds.getCenter(new three.Vector3());
 
+        const boundsAreValid =
+            isFinite(size.x) &&
+            isFinite(size.y) &&
+            isFinite(size.z) &&
+            !(size.x === 0 && size.y === 0 && size.z === 0);
+
+        if (boundsAreValid) {
+            const maxDimension = Math.max(
+                size.x,
+                size.y,
+                size.z,
+                0.001
+            );
+
+            threeModel.position.sub(center);
+            threeModel.scale.setScalar(
+                MODEL_FIT_SIZE / maxDimension
+            );
+
+            model.setAttribute("position", "0 0 0");
+        } else {
+            model.setAttribute("scale", "1 1 1");
         }
-    );
 
-    target.addEventListener(
-        "targetLost",
-        () => {
+        threeModel.updateMatrixWorld(true);
 
-            status.textContent =
-                "Point your camera at the furniture marker.";
+        setupThreeLighting(
+            threeModel,
+            three
+        );
 
-        }
-    );
+        model.setAttribute("visible", "true");
+
+        modelReady = true;
+
+        status.textContent =
+            `${furniture.name} ready. Point your camera at the marker.`;
+    });
+
+    model.addEventListener("model-error", () => {
+        status.textContent =
+            `Unable to load the ${furniture.name.toLowerCase()} model.`;
+    });
+
+    target.addEventListener("targetFound", () => {
+        status.textContent =
+            `${furniture.name} detected.`;
+
+        playMarkerDetectedSound();
+    });
+
+    target.addEventListener("targetLost", () => {
+        status.textContent =
+            "Point your camera at the furniture marker.";
+    });
 
     attachRotationControls();
 
     scene.addEventListener(
         "loaded",
         attachRotationControls,
-        {
-            once: true
-        }
+        { once: true }
     );
 
     rotateModelAutomatically();
-
 </script>
 
 </body>
