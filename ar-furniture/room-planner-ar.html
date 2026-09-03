@@ -216,7 +216,7 @@
         );
 
         renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.xr.enabled = true;
         renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -281,7 +281,9 @@
         if (placementGuide) {
           placementGuide.material.color.set(color);
         }
-        statusEl.textContent = message;
+        if (statusEl.textContent !== message) {
+          statusEl.textContent = message;
+        }
       }
 
       function updatePlacementGuideTransform() {
@@ -749,7 +751,10 @@
               const placementPosition = new THREE.Vector3();
               placementPosition.setFromMatrixPosition(reticle.matrix);
 
-              if (!footprintCenter || footprintCenter.distanceTo(placementPosition) > 0.15) {
+              if (
+                !frame.detectedPlanes &&
+                (!footprintCenter || footprintCenter.distanceTo(placementPosition) > 0.35)
+              ) {
                 footprintHitTestSources.forEach((source) => source.cancel());
                 footprintHitTestSources = [];
                 footprintResults = [false, false, false, false, false];
