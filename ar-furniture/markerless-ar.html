@@ -44,6 +44,8 @@
     let dragStartPosition = null;
     let dragStartRotation = null;
     let dragStartControllerYaw = 0;
+    let placementWasValid = false;
+    let audioContext = null;
     const furnitureRaycaster = new THREE.Raycaster();
     const furnitureRay = new THREE.Vector3(0, 0, -1);
 
@@ -72,22 +74,40 @@
       bed: { width: 2.00, depth: 1.60 }
     };
 
-    function normalizeFurnitureScale(model) {
-      const targetSize = getFurnitureSize();
-      model.updateMatrixWorld(true);
-
-      const bounds = new THREE.Box3().setFromObject(model);
-      const modelSize = bounds.getSize(new THREE.Vector3());
-      const horizontalWidth = Math.max(modelSize.x, 0.001);
-      const horizontalDepth = Math.max(modelSize.z, 0.001);
-      const widthScale = targetSize.width / horizontalWidth;
-      const depthScale = targetSize.depth / horizontalDepth;
-
-      model.scale.setScalar(Math.min(widthScale, depthScale));
-    }
-
     function getFurnitureSize() {
       return furnitureSizes[productId] || furnitureSizes.chair;
+    }
+
+    function playPlacementReadySound() {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) {
+        return;
+      }
+
+      if (!audioContext) {
+        audioContext = new AudioContextClass();
+      }
+
+      if (audioContext.state === 'suspended') {
+        audioContext.resume();
+      }
+
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      const startTime = audioContext.currentTime;
+
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(520, startTime);
+      oscillator.frequency.exponentialRampToValueAtTime(780, startTime + 0.12);
+
+      gainNode.gain.setValueAtTime(0.0001, startTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.16, startTime + 0.02);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, startTime + 0.28);
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      oscillator.start(startTime);
+      oscillator.stop(startTime + 0.3);
     }
 
     function applySelectedColor(model) {
@@ -285,6 +305,10 @@
       const color = isValid ? 0x00ff00 : 0xff0000;
       reticle.material.color.set(color);
       placementGuide.material.color.set(color);
+      if (isValid && !placementWasValid) {
+        playPlacementReadySound();
+      }
+      placementWasValid = isValid;
       info.textContent = message;
     }
 
@@ -568,7 +592,7 @@
 
           furnitureTemplate = gltf.scene;
           applySelectedColor(furnitureTemplate);
-          normalizeFurnitureScale(furnitureTemplate);
+          furnitureTemplate.scale.set(0.5, 0.5, 0.5);
           console.log(`${furniture.name} loaded successfully`);
           info.textContent = `${furniture.name} ready - press Start AR`;
           startButton.disabled = false;
@@ -605,6 +629,12 @@
       if (!navigator.xr) {
         info.textContent = 'WebXR is not supported on this device/browser.';
         return;
+      }
+
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (AudioContextClass) {
+        audioContext = audioContext || new AudioContextClass();
+        audioContext.resume();
       }
 
       try {
@@ -670,6 +700,7 @@
             activeSession = null;
             planeDetectionAvailable = false;
             canPlaceFurniture = false;
+            placementWasValid = false;
             isDraggingFurniture = false;
             selectedFurniture = null;
             reticle.visible = false;
@@ -737,6 +768,7 @@
       position.setFromMatrixPosition(reticle.matrix);
       placedObject.position.copy(position);
       placedObject.position.y += 0.01;
+      placedObject.scale.set( 0.5, 0.5, 0.5);
 
       scene.add(placedObject);
 
@@ -827,6 +859,7 @@
 
             reticle.visible = false;
             canPlaceFurniture = false;
+            placementWasValid = false;
 
             if (placementGuide) {
               placementGuide.visible = false;
