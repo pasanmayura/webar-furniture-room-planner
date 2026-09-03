@@ -171,6 +171,7 @@
       let dragStartPosition = null;
       let dragStartRotation = null;
       let dragStartControllerYaw = 0;
+      let lastPlacementValidationTime = 0;
 
       const furnitureRaycaster = new THREE.Raycaster();
       const furnitureRay = new THREE.Vector3(0, 0, -1);
@@ -215,8 +216,8 @@
           20
         );
 
-        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+        renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.xr.enabled = true;
         renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -300,6 +301,7 @@
             activeFurnitureType = button.dataset.kind;
             selectionButtons.forEach((btn) => btn.classList.toggle('active', btn === button));
             updatePlacementGuide();
+            lastPlacementValidationTime = 0;
             statusEl.textContent = `${furnitureOptions[activeFurnitureType].name} selected`;
           });
         });
@@ -763,23 +765,26 @@
 
               updatePlacementGuideTransform();
 
-              const hasEnoughFloor = checkAvailableFloorSpace(frame, placementPosition, getFurnitureSizeForType());
+              if (timestamp - lastPlacementValidationTime >= (isDraggingFurniture ? 50 : 100)) {
+                lastPlacementValidationTime = timestamp;
+                const hasEnoughFloor = checkAvailableFloorSpace(frame, placementPosition, getFurnitureSizeForType());
 
-              if (isDraggingFurniture && selectedFurniture) {
-                selectedFurniture.object3D.position.copy(placementPosition);
-                selectedFurniture.object3D.position.y += 0.01;
+                if (isDraggingFurniture && selectedFurniture) {
+                  selectedFurniture.object3D.position.copy(placementPosition);
+                  selectedFurniture.object3D.position.y += 0.01;
 
-                const controllerEuler = new THREE.Euler().setFromQuaternion(
-                  controller.getWorldQuaternion(new THREE.Quaternion()),
-                  'YXZ'
-                );
-                const controllerRotationChange = controllerEuler.y - dragStartControllerYaw;
-                selectedFurniture.object3D.rotation.y = dragStartRotation.y + controllerRotationChange;
+                  const controllerEuler = new THREE.Euler().setFromQuaternion(
+                    controller.getWorldQuaternion(new THREE.Quaternion()),
+                    'YXZ'
+                  );
+                  const controllerRotationChange = controllerEuler.y - dragStartControllerYaw;
+                  selectedFurniture.object3D.rotation.y = dragStartRotation.y + controllerRotationChange;
 
-                updateFurnitureBoundingBox(selectedFurniture);
-                validatePlacement(placementPosition, hasEnoughFloor, selectedFurniture, selectedFurniture.type);
-              } else {
-                validatePlacement(placementPosition, hasEnoughFloor, null, activeFurnitureType);
+                  updateFurnitureBoundingBox(selectedFurniture);
+                  validatePlacement(placementPosition, hasEnoughFloor, selectedFurniture, selectedFurniture.type);
+                } else {
+                  validatePlacement(placementPosition, hasEnoughFloor, null, activeFurnitureType);
+                }
               }
             }
           } else {
