@@ -72,6 +72,20 @@
       bed: { width: 2.00, depth: 1.60 }
     };
 
+    function normalizeFurnitureScale(model) {
+      const targetSize = getFurnitureSize();
+      model.updateMatrixWorld(true);
+
+      const bounds = new THREE.Box3().setFromObject(model);
+      const modelSize = bounds.getSize(new THREE.Vector3());
+      const horizontalWidth = Math.max(modelSize.x, 0.001);
+      const horizontalDepth = Math.max(modelSize.z, 0.001);
+      const widthScale = targetSize.width / horizontalWidth;
+      const depthScale = targetSize.depth / horizontalDepth;
+
+      model.scale.setScalar(Math.min(widthScale, depthScale));
+    }
+
     function getFurnitureSize() {
       return furnitureSizes[productId] || furnitureSizes.chair;
     }
@@ -554,7 +568,7 @@
 
           furnitureTemplate = gltf.scene;
           applySelectedColor(furnitureTemplate);
-          furnitureTemplate.scale.set(0.5, 0.5, 0.5);
+          normalizeFurnitureScale(furnitureTemplate);
           console.log(`${furniture.name} loaded successfully`);
           info.textContent = `${furniture.name} ready - press Start AR`;
           startButton.disabled = false;
@@ -723,7 +737,6 @@
       position.setFromMatrixPosition(reticle.matrix);
       placedObject.position.copy(position);
       placedObject.position.y += 0.01;
-      placedObject.scale.set( 0.5, 0.5, 0.5);
 
       scene.add(placedObject);
 
