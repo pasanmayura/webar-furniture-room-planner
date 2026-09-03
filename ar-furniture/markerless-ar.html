@@ -68,6 +68,22 @@
     const selectedColor = new URLSearchParams(window.location.search).get('color');
     const furniture = furnitureOptions[productId] || furnitureOptions.chair;
 
+    const editableMaterialKeywords = [
+      'fabric',
+      'upholstery',
+      'cushion',
+      'seat',
+      'wood',
+      'top',
+      'mattress'
+    ];
+
+    const editableMaterialNames = {
+      chair: ['couch_blue'],
+      table: ['mat20'],
+      bed: ['chocofur_fabric']
+    };
+
     const furnitureSizes = {
       chair: { width: 0.60, depth: 0.65 },
       table: { width: 1.20, depth: 0.70 },
@@ -125,7 +141,15 @@
           : [node.material];
 
         materials.forEach((material) => {
-          if (material.color) {
+          const materialName = `${material.name || ''} ${node.name || ''}`.toLowerCase();
+          const configuredNames = editableMaterialNames[productId] || [];
+          const isEditablePart = configuredNames.some((name) =>
+            materialName.includes(name)
+          ) || editableMaterialKeywords.some((keyword) =>
+            materialName.includes(keyword)
+          );
+
+          if (isEditablePart && material.color) {
             material.color.set(selectedColor);
           }
         });
