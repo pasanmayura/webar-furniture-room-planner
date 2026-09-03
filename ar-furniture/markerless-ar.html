@@ -662,6 +662,9 @@
             placementGuide.visible = false;
 
             placedFurniture.forEach((item) => {
+              if (item.object3D) {
+                scene.remove(item.object3D);
+              }
               if (item.shadow) {
                 scene.remove(item.shadow);
               }
