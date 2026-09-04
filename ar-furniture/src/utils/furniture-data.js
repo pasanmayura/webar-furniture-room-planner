@@ -4,6 +4,7 @@ export const FURNITURE_OPTIONS = {
     name: "Modern Chair",
     model: "/models/chair.glb",
     marker: "/markers/chair-target.mind",
+    targetImage: "/targets/chair.PNG",
     width: 0.60,
     depth: 0.65
   },
@@ -12,6 +13,7 @@ export const FURNITURE_OPTIONS = {
     name: "Modern Table",
     model: "/models/table.glb",
     marker: "/markers/table-target.mind",
+    targetImage: "/targets/table.PNG",
     width: 1.20,
     depth: 0.70
   },
@@ -20,6 +22,7 @@ export const FURNITURE_OPTIONS = {
     name: "Modern Double Bed",
     model: "/models/bed.glb",
     marker: "/markers/bed-target.mind",
+    targetImage: "/targets/bed.PNG",
     width: 2.00,
     depth: 1.60
   }

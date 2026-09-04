@@ -23,6 +23,20 @@ let rotationControlsAttached = false;
 
 const MODEL_FIT_SIZE = 0.3;
 
+function downloadSelectedTarget() {
+  if (!furniture.targetImage) {
+    return;
+  }
+
+  const downloadLink = document.createElement("a");
+  downloadLink.href = furniture.targetImage;
+  downloadLink.download = `${furniture.id}-target.png`;
+  downloadLink.hidden = true;
+  document.body.appendChild(downloadLink);
+  downloadLink.click();
+  downloadLink.remove();
+}
+
 function rotateModelAutomatically() {
   if (modelReady && !userIsRotating && model.object3D.visible) {
     model.object3D.rotation.y += 0.01;
@@ -201,6 +215,7 @@ scene.addEventListener(
   "loaded",
   () => {
     attachRotationControls();
+    downloadSelectedTarget();
   },
   { once: true }
 );
