@@ -11,6 +11,7 @@ import {
   checkAvailableFloorSpace,
   selectPlacedFurniture
 } from "./utils/ar-spatial.js";
+import { applyOcclusionMaterial, updateOcclusionUniforms } from "./utils/ar-occlusion.js";
 
 let scene;
 let camera;
@@ -286,6 +287,11 @@ function loadFurnitureModel() {
     furniture.model,
     (gltf) => {
       furnitureTemplate = gltf.scene;
+      furnitureTemplate.traverse((child) => {
+        if (child.isMesh && child.material) {
+          applyOcclusionMaterial(child.material);
+        }
+      });
       applySelectedColor(furnitureTemplate, selectedColor);
       furnitureTemplate.scale.set(0.5, 0.5, 0.5);
       info.textContent = `${furniture.name} ready - press Start AR`;
@@ -327,7 +333,11 @@ async function startAR() {
 
     const session = await navigator.xr.requestSession("immersive-ar", {
       requiredFeatures: ["hit-test"],
-      optionalFeatures: ["dom-overlay", "plane-detection", "light-estimation"],
+      optionalFeatures: ["dom-overlay", "plane-detection", "light-estimation", "depth-sensing"],
+      depthSensing: {
+        usagePreference: ["cpu-optimized", "gpu-optimized"],
+        dataFormatPreference: ["luminance-alpha", "float32"]
+      },
       domOverlay: { root: document.body }
     });
 
@@ -545,6 +555,7 @@ function render(timestamp, frame) {
     }
   }
 
+  updateOcclusionUniforms(scene, renderer, camera);
   renderer.render(scene, camera);
 }
 
