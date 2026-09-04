@@ -5,7 +5,7 @@ import { destroyBedPreview, loadBedPreview } from "./assets/bed-preview.js";
 const products = [
   {
     id: "chair",
-    name: "Modern Lounge Chair",
+    name: "Modern Chair",
     icon: "🪑",
     description: "Comfortable modern chair suitable for living rooms.",
     price: "LKR 25,000",
@@ -18,7 +18,7 @@ const products = [
   },
   {
     id: "table",
-    name: "Modern Dining Table",
+    name: "Modern Table",
     icon: "🛋️",
     description: "Simple wooden dining table for modern interiors.",
     price: "LKR 45,000",

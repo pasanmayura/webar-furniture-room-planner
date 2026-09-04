@@ -1,7 +1,7 @@
 export const FURNITURE_OPTIONS = {
   chair: {
     id: "chair",
-    name: "Modern Lounge Chair",
+    name: "Modern Chair",
     model: "/models/chair.glb",
     marker: "/markers/chair-target.mind",
     width: 0.60,
@@ -9,7 +9,7 @@ export const FURNITURE_OPTIONS = {
   },
   table: {
     id: "table",
-    name: "Modern Dining Table",
+    name: "Modern Table",
     model: "/models/table.glb",
     marker: "/markers/table-target.mind",
     width: 1.20,
