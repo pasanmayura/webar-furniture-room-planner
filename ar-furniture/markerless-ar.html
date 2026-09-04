@@ -20,12 +20,16 @@
     import * as THREE from 'three';
 
     import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+    import { XREstimatedLight } from 'three/examples/jsm/webxr/XREstimatedLight.js';
 
     let scene;
     let camera;
     let renderer;
     let controller;
     let reticle;
+    let xrLight = null;
+    let fallbackHemisphereLight = null;
+    let fallbackDirectionalLight = null;
     let hitTestSource = null;
     let hitTestSourceRequested = false;
     let activeSession = null;
@@ -189,33 +193,50 @@
     }
  
     function createLights() {
+      xrLight = new XREstimatedLight(renderer);
+      xrLight.directionalLight.castShadow = true;
+      xrLight.directionalLight.shadow.mapSize.set(2048, 2048);
+      xrLight.directionalLight.shadow.camera.near = 0.1;
+      xrLight.directionalLight.shadow.camera.far = 15;
+      xrLight.directionalLight.shadow.camera.left = -3;
+      xrLight.directionalLight.shadow.camera.right = 3;
+      xrLight.directionalLight.shadow.camera.top = 3;
+      xrLight.directionalLight.shadow.camera.bottom = -3;
+      xrLight.directionalLight.shadow.bias = -0.001;
+      xrLight.directionalLight.shadow.normalBias = 0.02;
 
-      const hemisphereLight =
-        new THREE.HemisphereLight(
-          0xffffff,
-          0x444444,
-          2
-        );
+      xrLight.addEventListener('estimationstart', () => {
+        scene.add(xrLight);
+        scene.remove(fallbackHemisphereLight);
+        scene.remove(fallbackDirectionalLight);
+        if (xrLight.environment) {
+          scene.environment = xrLight.environment;
+        }
+      });
 
-      scene.add(
-        hemisphereLight
-      );
+      xrLight.addEventListener('estimationend', () => {
+        scene.remove(xrLight);
+        scene.add(fallbackHemisphereLight);
+        scene.add(fallbackDirectionalLight);
+        scene.environment = null;
+      });
 
-      const directionalLight =
-        new THREE.DirectionalLight(
-          0xffffff,
-          2
-        );
+      fallbackHemisphereLight = new THREE.HemisphereLight(0xffffff, 0x444444, 2);
+      fallbackDirectionalLight = new THREE.DirectionalLight(0xffffff, 2);
+      fallbackDirectionalLight.position.set(1.5, 3.5, 2);
+      fallbackDirectionalLight.castShadow = true;
+      fallbackDirectionalLight.shadow.mapSize.set(2048, 2048);
+      fallbackDirectionalLight.shadow.camera.near = 0.1;
+      fallbackDirectionalLight.shadow.camera.far = 15;
+      fallbackDirectionalLight.shadow.camera.left = -3;
+      fallbackDirectionalLight.shadow.camera.right = 3;
+      fallbackDirectionalLight.shadow.camera.top = 3;
+      fallbackDirectionalLight.shadow.camera.bottom = -3;
+      fallbackDirectionalLight.shadow.bias = -0.001;
+      fallbackDirectionalLight.shadow.normalBias = 0.02;
 
-      directionalLight.position.set(
-        1,
-        3,
-        2
-      );
-      directionalLight.castShadow = true;
-      scene.add(
-        directionalLight
-      );
+      scene.add(fallbackHemisphereLight);
+      scene.add(fallbackDirectionalLight);
     }
 
     function createSoftShadowTexture() {
@@ -237,23 +258,43 @@
     }
 
     function createFurnitureShadow(position, size) {
-      const shadowSize = Math.max(size.width, size.depth, 0.18) * 1.35;
-      const shadow = new THREE.Mesh(
-        new THREE.PlaneGeometry(shadowSize, shadowSize),
-        new THREE.MeshBasicMaterial({
-          map: createSoftShadowTexture(),
-          transparent: true,
-          depthWrite: false,
-          polygonOffset: true,
-          polygonOffsetFactor: -2
-        })
-      );
+      const shadowGroup = new THREE.Group();
+      const shadowCatcherSize = Math.max(size.width, size.depth, 0.2) * 2.4;
+      const contactSize = Math.max(size.width, size.depth, 0.18) * 1.35;
 
-      shadow.rotation.x = -Math.PI / 2;
-      shadow.position.set(position.x, position.y + 0.003, position.z);
-      shadow.renderOrder = 1;
-      scene.add(shadow);
-      return shadow;
+      // 1. Dynamic Directional Shadow Receiver (ShadowMaterial)
+      const shadowReceiverGeometry = new THREE.PlaneGeometry(shadowCatcherSize, shadowCatcherSize);
+      const shadowReceiverMaterial = new THREE.ShadowMaterial({
+        opacity: 0.42,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -1
+      });
+      const shadowReceiver = new THREE.Mesh(shadowReceiverGeometry, shadowReceiverMaterial);
+      shadowReceiver.receiveShadow = true;
+      shadowReceiver.rotation.x = -Math.PI / 2;
+      shadowReceiver.position.set(0, 0.001, 0);
+      shadowReceiver.renderOrder = 1;
+      shadowGroup.add(shadowReceiver);
+
+      // 2. Soft Ambient Contact Shadow
+      const contactGeometry = new THREE.PlaneGeometry(contactSize, contactSize);
+      const contactMaterial = new THREE.MeshBasicMaterial({
+        map: createSoftShadowTexture(),
+        transparent: true,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -2
+      });
+      const contactMesh = new THREE.Mesh(contactGeometry, contactMaterial);
+      contactMesh.rotation.x = -Math.PI / 2;
+      contactMesh.position.set(0, 0.002, 0);
+      contactMesh.renderOrder = 2;
+      shadowGroup.add(contactMesh);
+
+      shadowGroup.position.set(position.x, position.y, position.z);
+      scene.add(shadowGroup);
+      return shadowGroup;
     }
 
     function updateFurnitureShadow(item) {
@@ -263,9 +304,10 @@
 
       item.shadow.position.set(
         item.object3D.position.x,
-        item.object3D.position.y + 0.003,
+        item.object3D.position.y,
         item.object3D.position.z
       );
+      item.shadow.rotation.y = item.object3D.rotation.y;
     }
 
     function createReticle() {
@@ -658,7 +700,8 @@
               ],
               optionalFeatures: [
                 'dom-overlay',
-                'plane-detection'
+                'plane-detection',
+                'light-estimation'
               ],
               domOverlay: {
                 root: document.body
