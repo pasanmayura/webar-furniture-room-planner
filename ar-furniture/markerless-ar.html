@@ -172,7 +172,7 @@
           alpha: true
         });
       renderer.setPixelRatio(
-        window.devicePixelRatio
+        Math.min(window.devicePixelRatio, 1.25)
       );
       renderer.setSize(
         window.innerWidth,
@@ -181,7 +181,7 @@
 
       renderer.xr.enabled = true;
       renderer.shadowMap.enabled = true;
-      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.shadowMap.type = THREE.PCFShadowMap;
 
       // Better color handling
       renderer.outputColorSpace =
@@ -193,15 +193,16 @@
     }
  
     function createLights() {
-      xrLight = new XREstimatedLight(renderer);
+      // Disable environmentEstimation (false) to prevent expensive cubemap PMREM generation on mobile
+      xrLight = new XREstimatedLight(renderer, false);
       xrLight.directionalLight.castShadow = true;
-      xrLight.directionalLight.shadow.mapSize.set(2048, 2048);
+      xrLight.directionalLight.shadow.mapSize.set(1024, 1024);
       xrLight.directionalLight.shadow.camera.near = 0.1;
-      xrLight.directionalLight.shadow.camera.far = 15;
-      xrLight.directionalLight.shadow.camera.left = -3;
-      xrLight.directionalLight.shadow.camera.right = 3;
-      xrLight.directionalLight.shadow.camera.top = 3;
-      xrLight.directionalLight.shadow.camera.bottom = -3;
+      xrLight.directionalLight.shadow.camera.far = 10;
+      xrLight.directionalLight.shadow.camera.left = -2.5;
+      xrLight.directionalLight.shadow.camera.right = 2.5;
+      xrLight.directionalLight.shadow.camera.top = 2.5;
+      xrLight.directionalLight.shadow.camera.bottom = -2.5;
       xrLight.directionalLight.shadow.bias = -0.001;
       xrLight.directionalLight.shadow.normalBias = 0.02;
 
@@ -209,29 +210,25 @@
         scene.add(xrLight);
         scene.remove(fallbackHemisphereLight);
         scene.remove(fallbackDirectionalLight);
-        if (xrLight.environment) {
-          scene.environment = xrLight.environment;
-        }
       });
 
       xrLight.addEventListener('estimationend', () => {
         scene.remove(xrLight);
         scene.add(fallbackHemisphereLight);
         scene.add(fallbackDirectionalLight);
-        scene.environment = null;
       });
 
       fallbackHemisphereLight = new THREE.HemisphereLight(0xffffff, 0x444444, 2);
       fallbackDirectionalLight = new THREE.DirectionalLight(0xffffff, 2);
       fallbackDirectionalLight.position.set(1.5, 3.5, 2);
       fallbackDirectionalLight.castShadow = true;
-      fallbackDirectionalLight.shadow.mapSize.set(2048, 2048);
+      fallbackDirectionalLight.shadow.mapSize.set(1024, 1024);
       fallbackDirectionalLight.shadow.camera.near = 0.1;
-      fallbackDirectionalLight.shadow.camera.far = 15;
-      fallbackDirectionalLight.shadow.camera.left = -3;
-      fallbackDirectionalLight.shadow.camera.right = 3;
-      fallbackDirectionalLight.shadow.camera.top = 3;
-      fallbackDirectionalLight.shadow.camera.bottom = -3;
+      fallbackDirectionalLight.shadow.camera.far = 10;
+      fallbackDirectionalLight.shadow.camera.left = -2.5;
+      fallbackDirectionalLight.shadow.camera.right = 2.5;
+      fallbackDirectionalLight.shadow.camera.top = 2.5;
+      fallbackDirectionalLight.shadow.camera.bottom = -2.5;
       fallbackDirectionalLight.shadow.bias = -0.001;
       fallbackDirectionalLight.shadow.normalBias = 0.02;
 
