@@ -139,6 +139,7 @@
     <script type="module">
       import * as THREE from 'three';
       import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+      import { XREstimatedLight } from 'three/examples/jsm/webxr/XREstimatedLight.js';
 
       const statusEl = document.getElementById('status');
       const startButton = document.getElementById('start-ar');
@@ -153,6 +154,9 @@
       let controller;
       let reticle;
       let placementGuide;
+      let xrLight = null;
+      let fallbackHemisphereLight = null;
+      let fallbackDirectionalLight = null;
 
       let hitTestSource = null;
       let hitTestSourceRequested = false;
@@ -216,22 +220,133 @@
           20
         );
 
-        renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true });
+        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.xr.enabled = true;
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         renderer.outputColorSpace = THREE.SRGBColorSpace;
 
         document.body.appendChild(renderer.domElement);
       }
 
       function createLights() {
-        const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x444444, 2);
-        scene.add(hemisphereLight);
+        xrLight = new XREstimatedLight(renderer);
+        xrLight.directionalLight.castShadow = true;
+        xrLight.directionalLight.shadow.mapSize.set(2048, 2048);
+        xrLight.directionalLight.shadow.camera.near = 0.1;
+        xrLight.directionalLight.shadow.camera.far = 15;
+        xrLight.directionalLight.shadow.camera.left = -4;
+        xrLight.directionalLight.shadow.camera.right = 4;
+        xrLight.directionalLight.shadow.camera.top = 4;
+        xrLight.directionalLight.shadow.camera.bottom = -4;
+        xrLight.directionalLight.shadow.bias = -0.001;
+        xrLight.directionalLight.shadow.normalBias = 0.02;
 
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 2);
-        directionalLight.position.set(1, 3, 2);
-        scene.add(directionalLight);
+        xrLight.addEventListener('estimationstart', () => {
+          scene.add(xrLight);
+          scene.remove(fallbackHemisphereLight);
+          scene.remove(fallbackDirectionalLight);
+          if (xrLight.environment) {
+            scene.environment = xrLight.environment;
+          }
+        });
+
+        xrLight.addEventListener('estimationend', () => {
+          scene.remove(xrLight);
+          scene.add(fallbackHemisphereLight);
+          scene.add(fallbackDirectionalLight);
+          scene.environment = null;
+        });
+
+        fallbackHemisphereLight = new THREE.HemisphereLight(0xffffff, 0x444444, 2);
+        fallbackDirectionalLight = new THREE.DirectionalLight(0xffffff, 2);
+        fallbackDirectionalLight.position.set(1.5, 3.5, 2);
+        fallbackDirectionalLight.castShadow = true;
+        fallbackDirectionalLight.shadow.mapSize.set(2048, 2048);
+        fallbackDirectionalLight.shadow.camera.near = 0.1;
+        fallbackDirectionalLight.shadow.camera.far = 15;
+        fallbackDirectionalLight.shadow.camera.left = -4;
+        fallbackDirectionalLight.shadow.camera.right = 4;
+        fallbackDirectionalLight.shadow.camera.top = 4;
+        fallbackDirectionalLight.shadow.camera.bottom = -4;
+        fallbackDirectionalLight.shadow.bias = -0.001;
+        fallbackDirectionalLight.shadow.normalBias = 0.02;
+
+        scene.add(fallbackHemisphereLight);
+        scene.add(fallbackDirectionalLight);
+      }
+
+      function createSoftShadowTexture() {
+        const canvas = document.createElement('canvas');
+        canvas.width = 256;
+        canvas.height = 256;
+
+        const context = canvas.getContext('2d');
+        const gradient = context.createRadialGradient(128, 128, 8, 128, 128, 118);
+        gradient.addColorStop(0, 'rgba(0, 0, 0, 0.42)');
+        gradient.addColorStop(0.45, 'rgba(0, 0, 0, 0.20)');
+        gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        context.fillStyle = gradient;
+        context.fillRect(0, 0, 256, 256);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.colorSpace = THREE.SRGBColorSpace;
+        return texture;
+      }
+
+      function createFurnitureShadow(position, size) {
+        const shadowGroup = new THREE.Group();
+        const shadowCatcherSize = Math.max(size.width, size.depth, 0.2) * 2.4;
+        const contactSize = Math.max(size.width, size.depth, 0.18) * 1.35;
+
+        // 1. Directional Shadow Receiver (ShadowMaterial)
+        const shadowReceiverGeometry = new THREE.PlaneGeometry(shadowCatcherSize, shadowCatcherSize);
+        const shadowReceiverMaterial = new THREE.ShadowMaterial({
+          opacity: 0.42,
+          depthWrite: false,
+          polygonOffset: true,
+          polygonOffsetFactor: -1
+        });
+        const shadowReceiver = new THREE.Mesh(shadowReceiverGeometry, shadowReceiverMaterial);
+        shadowReceiver.receiveShadow = true;
+        shadowReceiver.rotation.x = -Math.PI / 2;
+        shadowReceiver.position.set(0, 0.001, 0);
+        shadowReceiver.renderOrder = 1;
+        shadowGroup.add(shadowReceiver);
+
+        // 2. Soft Ambient Contact Shadow
+        const contactGeometry = new THREE.PlaneGeometry(contactSize, contactSize);
+        const contactMaterial = new THREE.MeshBasicMaterial({
+          map: createSoftShadowTexture(),
+          transparent: true,
+          depthWrite: false,
+          polygonOffset: true,
+          polygonOffsetFactor: -2
+        });
+        const contactMesh = new THREE.Mesh(contactGeometry, contactMaterial);
+        contactMesh.rotation.x = -Math.PI / 2;
+        contactMesh.position.set(0, 0.002, 0);
+        contactMesh.renderOrder = 2;
+        shadowGroup.add(contactMesh);
+
+        shadowGroup.position.set(position.x, position.y, position.z);
+        scene.add(shadowGroup);
+        return shadowGroup;
+      }
+
+      function updateFurnitureShadow(item) {
+        if (!item || !item.shadow) {
+          return;
+        }
+
+        item.shadow.position.set(
+          item.object3D.position.x,
+          item.object3D.position.y,
+          item.object3D.position.z
+        );
+        item.shadow.rotation.y = item.object3D.rotation.y;
       }
 
       function createReticle() {
@@ -315,6 +430,12 @@
             option.model,
             (gltf) => {
               const model = gltf.scene;
+              model.traverse((node) => {
+                if (node.isMesh) {
+                  node.castShadow = true;
+                  node.receiveShadow = true;
+                }
+              });
               model.scale.set(0.5, 0.5, 0.5);
               furnitureTemplates[key] = model;
               statusEl.textContent = `${option.name} ready`;
@@ -349,7 +470,7 @@
 
           const session = await navigator.xr.requestSession('immersive-ar', {
             requiredFeatures: ['hit-test'],
-            optionalFeatures: ['dom-overlay', 'plane-detection'],
+            optionalFeatures: ['dom-overlay', 'plane-detection', 'light-estimation'],
             domOverlay: { root: document.body }
           });
 
@@ -389,6 +510,9 @@
               const item = placedFurniture.pop();
               if (item && item.object3D) {
                 scene.remove(item.object3D);
+              }
+              if (item && item.shadow) {
+                scene.remove(item.shadow);
               }
             }
 
@@ -646,8 +770,10 @@
           selectedFurniture.object3D.position.copy(dragStartPosition);
           selectedFurniture.object3D.rotation.copy(dragStartRotation);
           updateFurnitureBoundingBox(selectedFurniture);
+          updateFurnitureShadow(selectedFurniture);
           statusEl.textContent = 'Not enough space';
         } else {
+          updateFurnitureShadow(selectedFurniture);
           statusEl.textContent = `${furnitureOptions[selectedFurniture.type].name} placed`;
         }
 
@@ -678,6 +804,12 @@
         }
 
         const placedObject = template.clone(true);
+        placedObject.traverse((node) => {
+          if (node.isMesh) {
+            node.castShadow = true;
+            node.receiveShadow = true;
+          }
+        });
         const size = getFurnitureSizeForType(activeFurnitureType);
 
         const position = new THREE.Vector3();
@@ -688,9 +820,12 @@
 
         scene.add(placedObject);
 
+        const shadow = createFurnitureShadow(placedObject.position, size);
+
         const placedItem = {
           type: activeFurnitureType,
           object3D: placedObject,
+          shadow,
           width: size.width,
           depth: size.depth,
           boundingBox: createFurnitureBoundingBox(placedObject.position, size)
@@ -711,6 +846,9 @@
         }
 
         scene.remove(selectedFurniture.object3D);
+        if (selectedFurniture.shadow) {
+          scene.remove(selectedFurniture.shadow);
+        }
         const index = placedFurniture.indexOf(selectedFurniture);
         if (index >= 0) {
           placedFurniture.splice(index, 1);
@@ -781,6 +919,7 @@
                   selectedFurniture.object3D.rotation.y = dragStartRotation.y + controllerRotationChange;
 
                   updateFurnitureBoundingBox(selectedFurniture);
+                  updateFurnitureShadow(selectedFurniture);
                   validatePlacement(placementPosition, hasEnoughFloor, selectedFurniture, selectedFurniture.type);
                 } else {
                   validatePlacement(placementPosition, hasEnoughFloor, null, activeFurnitureType);
