@@ -52,6 +52,9 @@ const furnitureRaycaster = new THREE.Raycaster();
 const furnitureRay = new THREE.Vector3(0, 0, -1);
 
 let activeFurnitureType = "chair";
+let suppressSelectAction = false;
+
+const OVERLAY_CONTROL_SELECTOR = "#remove-selected, #exit-ar, #selection-bar, #start-ar";
 
 init();
 
@@ -217,7 +220,19 @@ function setupEvents() {
   startButton.addEventListener("click", startAR);
   exitButton.addEventListener("click", exitAR);
   removeButton.addEventListener("click", removeSelectedFurniture);
+  document.addEventListener("pointerdown", handleOverlayPointerDown, true);
   window.addEventListener("resize", onWindowResize);
+}
+
+function handleOverlayPointerDown(event) {
+  if (!event.target.closest(OVERLAY_CONTROL_SELECTOR)) {
+    return;
+  }
+
+  suppressSelectAction = true;
+  window.setTimeout(() => {
+    suppressSelectAction = false;
+  }, 300);
 }
 
 async function startAR() {
@@ -377,6 +392,10 @@ function createController() {
 }
 
 function handleSelectStart() {
+  if (suppressSelectAction) {
+    return;
+  }
+
   selectedFurniture = selectPlacedFurniture(
     controller,
     placedFurniture,
@@ -401,6 +420,11 @@ function handleSelectStart() {
 }
 
 function handleSelectEnd() {
+  if (suppressSelectAction) {
+    suppressSelectAction = false;
+    return;
+  }
+
   if (isDraggingFurniture && selectedFurniture) {
     finishFurnitureDrag();
     return;
@@ -494,6 +518,11 @@ function removeSelectedFurniture() {
     statusEl.textContent = "No furniture selected";
     return;
   }
+
+  isDraggingFurniture = false;
+  dragStartPosition = null;
+  dragStartRotation = null;
+  dragStartControllerYaw = 0;
 
   scene.remove(selectedFurniture.object3D);
   if (selectedFurniture.shadow) {
