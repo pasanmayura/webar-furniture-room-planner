@@ -1,12 +1,13 @@
 import { destroyChairPreview, loadChairPreview } from "./assets/chair-preview.js";
 import { destroyTablePreview, loadTablePreview } from "./assets/table-preview.js";
 import { destroyBedPreview, loadBedPreview } from "./assets/bed-preview.js";
+import { FURNITURE_OPTIONS } from "./utils/furniture-data.js";
 
 const products = [
   {
     id: "chair",
     name: "Modern Chair",
-    icon: "🪑",
+    targetImage: FURNITURE_OPTIONS.chair.targetImage,
     description: "Comfortable modern chair suitable for living rooms.",
     price: "LKR 25,000",
     dimensions: "60 cm × 65 cm × 85 cm",
@@ -19,7 +20,7 @@ const products = [
   {
     id: "table",
     name: "Modern Table",
-    icon: "🛋️",
+    targetImage: FURNITURE_OPTIONS.table.targetImage,
     description: "Simple wooden dining table for modern interiors.",
     price: "LKR 45,000",
     dimensions: "120 cm × 70 cm × 75 cm",
@@ -32,7 +33,7 @@ const products = [
   {
     id: "bed",
     name: "Modern Double Bed",
-    icon: "🛏️",
+    targetImage: FURNITURE_OPTIONS.bed.targetImage,
     description: "Minimal double bed designed for modern bedrooms.",
     price: "LKR 85,000",
     dimensions: "200 cm × 160 cm × 90 cm",
@@ -60,8 +61,13 @@ function renderCatalogue() {
     .map(
       (product) => `
       <article class="product-card">
-        <div class="product-image" aria-hidden="true">
-          <span class="placeholder-icon">${product.icon}</span>
+        <div class="product-image">
+          <img
+            class="product-target-image"
+            src="${product.targetImage}"
+            alt="${product.name} AR marker target"
+            loading="lazy"
+          />
         </div>
         <div class="product-body">
           <h3 class="product-name">${product.name}</h3>
@@ -120,7 +126,7 @@ function showProductDetails(productId) {
 
   productDetailsView.innerHTML = `
     <div class="details-image" id="detailsImage" aria-label="3D preview of ${selectedProduct.name}">
-      ${selectedProduct.id === "chair" ? "<canvas id=\"chairPreviewCanvas\"></canvas>" : selectedProduct.id === "table" ? "<canvas id=\"tablePreviewCanvas\"></canvas>" : selectedProduct.id === "bed" ? "<canvas id=\"bedPreviewCanvas\"></canvas>" : `<span class="placeholder-icon" aria-hidden="true">${selectedProduct.icon}</span>`}
+      ${selectedProduct.id === "chair" ? "<canvas id=\"chairPreviewCanvas\"></canvas>" : selectedProduct.id === "table" ? "<canvas id=\"tablePreviewCanvas\"></canvas>" : selectedProduct.id === "bed" ? "<canvas id=\"bedPreviewCanvas\"></canvas>" : `<img class="product-target-image" src="${selectedProduct.targetImage}" alt="${selectedProduct.name} AR marker target" />`}
     </div>
 
     <div class="details-body">
