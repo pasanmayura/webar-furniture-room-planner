@@ -20,16 +20,17 @@
     import * as THREE from 'three';
 
     import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-    import { XREstimatedLight } from 'three/examples/jsm/webxr/XREstimatedLight.js';
 
     let scene;
     let camera;
     let renderer;
     let controller;
     let reticle;
-    let xrLight = null;
+    let xrLightProbe = null;
+    let primaryLight = null;
+    let ambientProbe = null;
     let fallbackHemisphereLight = null;
-    let fallbackDirectionalLight = null;
+    let lastLightEstimateTime = 0;
     let hitTestSource = null;
     let hitTestSourceRequested = false;
     let activeSession = null;
@@ -168,12 +169,12 @@
   
       renderer =
         new THREE.WebGLRenderer({
-          antialias: true,
-          alpha: true
+          antialias: false,
+          alpha: true,
+          powerPreference: 'high-performance',
+          precision: 'mediump'
         });
-      renderer.setPixelRatio(
-        Math.min(window.devicePixelRatio, 1.25)
-      );
+      renderer.setPixelRatio(1);
       renderer.setSize(
         window.innerWidth,
         window.innerHeight
@@ -181,6 +182,7 @@
 
       renderer.xr.enabled = true;
       renderer.shadowMap.enabled = true;
+      renderer.shadowMap.autoUpdate = false;
       renderer.shadowMap.type = THREE.PCFShadowMap;
 
       // Better color handling
@@ -193,47 +195,27 @@
     }
  
     function createLights() {
-      // Disable environmentEstimation (false) to prevent expensive cubemap PMREM generation on mobile
-      xrLight = new XREstimatedLight(renderer, false);
-      xrLight.directionalLight.castShadow = true;
-      xrLight.directionalLight.shadow.mapSize.set(1024, 1024);
-      xrLight.directionalLight.shadow.camera.near = 0.1;
-      xrLight.directionalLight.shadow.camera.far = 10;
-      xrLight.directionalLight.shadow.camera.left = -2.5;
-      xrLight.directionalLight.shadow.camera.right = 2.5;
-      xrLight.directionalLight.shadow.camera.top = 2.5;
-      xrLight.directionalLight.shadow.camera.bottom = -2.5;
-      xrLight.directionalLight.shadow.bias = -0.001;
-      xrLight.directionalLight.shadow.normalBias = 0.02;
+      ambientProbe = new THREE.LightProbe();
+      ambientProbe.intensity = 0;
+      scene.add(ambientProbe);
 
-      xrLight.addEventListener('estimationstart', () => {
-        scene.add(xrLight);
-        scene.remove(fallbackHemisphereLight);
-        scene.remove(fallbackDirectionalLight);
-      });
-
-      xrLight.addEventListener('estimationend', () => {
-        scene.remove(xrLight);
-        scene.add(fallbackHemisphereLight);
-        scene.add(fallbackDirectionalLight);
-      });
-
-      fallbackHemisphereLight = new THREE.HemisphereLight(0xffffff, 0x444444, 2);
-      fallbackDirectionalLight = new THREE.DirectionalLight(0xffffff, 2);
-      fallbackDirectionalLight.position.set(1.5, 3.5, 2);
-      fallbackDirectionalLight.castShadow = true;
-      fallbackDirectionalLight.shadow.mapSize.set(1024, 1024);
-      fallbackDirectionalLight.shadow.camera.near = 0.1;
-      fallbackDirectionalLight.shadow.camera.far = 10;
-      fallbackDirectionalLight.shadow.camera.left = -2.5;
-      fallbackDirectionalLight.shadow.camera.right = 2.5;
-      fallbackDirectionalLight.shadow.camera.top = 2.5;
-      fallbackDirectionalLight.shadow.camera.bottom = -2.5;
-      fallbackDirectionalLight.shadow.bias = -0.001;
-      fallbackDirectionalLight.shadow.normalBias = 0.02;
-
+      fallbackHemisphereLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.8);
       scene.add(fallbackHemisphereLight);
-      scene.add(fallbackDirectionalLight);
+
+      primaryLight = new THREE.DirectionalLight(0xffffff, 1.8);
+      primaryLight.position.set(1.5, 3.5, 2);
+      primaryLight.castShadow = true;
+      primaryLight.shadow.mapSize.set(512, 512);
+      primaryLight.shadow.camera.near = 0.1;
+      primaryLight.shadow.camera.far = 8;
+      primaryLight.shadow.camera.left = -2.5;
+      primaryLight.shadow.camera.right = 2.5;
+      primaryLight.shadow.camera.top = 2.5;
+      primaryLight.shadow.camera.bottom = -2.5;
+      primaryLight.shadow.bias = -0.001;
+      primaryLight.shadow.normalBias = 0.02;
+
+      scene.add(primaryLight);
     }
 
     function createSoftShadowTexture() {
@@ -580,11 +562,14 @@
         selectedFurniture.object3D.position.copy(dragStartPosition);
         selectedFurniture.object3D.rotation.copy(dragStartRotation);
         updateFurnitureBoundingBox(selectedFurniture);
+        updateFurnitureShadow(selectedFurniture);
         info.textContent = 'Not enough space for this furniture';
       } else {
+        updateFurnitureShadow(selectedFurniture);
         info.textContent = `${furniture.name} moved successfully`;
       }
 
+      renderer.shadowMap.needsUpdate = true;
       isDraggingFurniture = false;
       selectedFurniture = null;
       dragStartPosition = null;
@@ -719,10 +704,17 @@
           session
         );
 
+        if ('requestLightProbe' in session) {
+          session.requestLightProbe().then((probe) => {
+            xrLightProbe = probe;
+          }).catch(() => {});
+        }
+
         startButton.style.display = 'none';
         exitButton.style.display = 'block';
         info.textContent = 'Move your phone slowly to find a surface';
 
+        renderer.shadowMap.needsUpdate = true;
         renderer.setAnimationLoop(render);
 
         session.addEventListener(
@@ -730,6 +722,7 @@
           function () {
 
             renderer.setAnimationLoop(null);
+            xrLightProbe = null;
             hitTestSource = null;
             hitTestSourceRequested = false;
             footprintHitTestSources.forEach((source) => source.cancel());
@@ -826,6 +819,7 @@
       placedFurniture.push(placedItem);
       updateFurnitureBoundingBox(placedItem);
 
+      renderer.shadowMap.needsUpdate = true;
       console.log(`${furniture.name} placed:`, placedObject.position);
       info.textContent = `${furniture.name} placed successfully`;
     }
@@ -835,6 +829,25 @@
       if (frame) {
         const referenceSpace = renderer.xr.getReferenceSpace();
         const session = renderer.xr.getSession();
+
+        if (xrLightProbe && timestamp - lastLightEstimateTime > 300) {
+          lastLightEstimateTime = timestamp;
+          const estimate = frame.getLightEstimate(xrLightProbe);
+          if (estimate) {
+            ambientProbe.sh.fromArray(estimate.sphericalHarmonicsCoefficients);
+            ambientProbe.intensity = 1.0;
+
+            const intensityScalar = Math.max(1.0, Math.max(estimate.primaryLightIntensity.x, Math.max(estimate.primaryLightIntensity.y, estimate.primaryLightIntensity.z)));
+            primaryLight.color.setRGB(
+              estimate.primaryLightIntensity.x / intensityScalar,
+              estimate.primaryLightIntensity.y / intensityScalar,
+              estimate.primaryLightIntensity.z / intensityScalar
+            );
+            primaryLight.intensity = Math.min(intensityScalar, 2.2);
+            primaryLight.position.copy(estimate.primaryLightDirection).multiplyScalar(5);
+            renderer.shadowMap.needsUpdate = true;
+          }
+        }
 
         if (hitTestSourceRequested === false) {
 
@@ -889,6 +902,7 @@
                 selectedFurniture.object3D.rotation.y = dragStartRotation.y + controllerRotationChange;
                 updateFurnitureShadow(selectedFurniture);
                 updateFurnitureBoundingBox(selectedFurniture);
+                renderer.shadowMap.needsUpdate = true;
                 validatePlacement(placementPosition, hasEnoughFloor, selectedFurniture);
               } else {
                 validatePlacement(placementPosition, hasEnoughFloor);
