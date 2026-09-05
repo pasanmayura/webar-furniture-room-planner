@@ -15,6 +15,7 @@ The following third-party 3D models were used in this project and optimized for 
 - Creator: 1180s-studio
 - Source: CGTrader
 - License: Royalty Free License (no AI)
+- Model ID: #3331051
 - Modifications: Polygon reduction, texture optimization, and GLB export for WebAR use.
 
 ### Chair - Furniture Wood
