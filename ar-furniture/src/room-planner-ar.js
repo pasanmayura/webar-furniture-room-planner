@@ -53,6 +53,7 @@ const furnitureRay = new THREE.Vector3(0, 0, -1);
 
 let activeFurnitureType = "chair";
 let suppressSelectAction = false;
+let interactionTarget = null;
 
 const OVERLAY_CONTROL_SELECTOR = "#remove-selected, #exit-ar, #selection-bar, #start-ar";
 
@@ -396,37 +397,60 @@ function handleSelectStart() {
     return;
   }
 
-  selectedFurniture = selectPlacedFurniture(
+  const hitFurniture = selectPlacedFurniture(
     controller,
     placedFurniture,
     furnitureRaycaster,
     furnitureRay,
     scene
   );
-  if (!selectedFurniture) return;
 
-  isDraggingFurniture = true;
-  dragStartPosition = selectedFurniture.object3D.position.clone();
-  dragStartRotation = selectedFurniture.object3D.rotation.clone();
+  interactionTarget = hitFurniture;
 
-  const controllerEuler = new THREE.Euler().setFromQuaternion(
-    controller.getWorldQuaternion(new THREE.Quaternion()),
-    "YXZ"
-  );
-  dragStartControllerYaw = controllerEuler.y;
+  if (hitFurniture) {
+    const wasAlreadySelected = selectedFurniture === hitFurniture;
 
-  removeButton.style.display = "block";
-  statusEl.textContent = `${FURNITURE_OPTIONS[selectedFurniture.type].name} selected`;
+    if (wasAlreadySelected) {
+      isDraggingFurniture = true;
+      dragStartPosition = hitFurniture.object3D.position.clone();
+      dragStartRotation = hitFurniture.object3D.rotation.clone();
+
+      const controllerEuler = new THREE.Euler().setFromQuaternion(
+        controller.getWorldQuaternion(new THREE.Quaternion()),
+        "YXZ"
+      );
+      dragStartControllerYaw = controllerEuler.y;
+
+      statusEl.textContent = `Move ${FURNITURE_OPTIONS[hitFurniture.type].name}`;
+    } else {
+      selectedFurniture = hitFurniture;
+      isDraggingFurniture = false;
+      removeButton.style.display = "block";
+      statusEl.textContent = `${FURNITURE_OPTIONS[hitFurniture.type].name} selected`;
+    }
+
+    return;
+  }
+
+  isDraggingFurniture = false;
 }
 
 function handleSelectEnd() {
   if (suppressSelectAction) {
     suppressSelectAction = false;
+    interactionTarget = null;
     return;
   }
 
+  const tappedFurniture = interactionTarget;
+  interactionTarget = null;
+
   if (isDraggingFurniture && selectedFurniture) {
     finishFurnitureDrag();
+    return;
+  }
+
+  if (tappedFurniture) {
     return;
   }
 
@@ -446,15 +470,15 @@ function finishFurnitureDrag() {
     statusEl.textContent = "Not enough space";
   } else {
     updateFurnitureShadow(selectedFurniture);
-    statusEl.textContent = `${FURNITURE_OPTIONS[selectedFurniture.type].name} placed`;
+    statusEl.textContent = `${FURNITURE_OPTIONS[selectedFurniture.type].name} moved`;
   }
 
   renderer.shadowMap.needsUpdate = true;
   isDraggingFurniture = false;
-  selectedFurniture = null;
   dragStartPosition = null;
   dragStartRotation = null;
   dragStartControllerYaw = 0;
+  removeButton.style.display = "block";
 
   return true;
 }
